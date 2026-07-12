@@ -14,6 +14,7 @@ struct EpisodeDetailView: View {
         var id: String { rawValue }
     }
     @State private var tab: Tab = .transcript
+    @State private var showingMetadata = false
 
     private var podcast: Podcast? { model.podcast(for: episode) }
 
@@ -41,11 +42,15 @@ struct EpisodeDetailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle(episode.title)
+        .sheet(isPresented: $showingMetadata) {
+            EpisodeMetadataSheet(episode: episode, podcast: podcast)
+        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
+            HStack(alignment: .top, spacing: 12) {
+                EpisodeArtwork(url: episode.artworkURL, size: 64)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(episode.title).font(.title2.bold()).lineLimit(2)
                     if let podcast { Text(podcast.title).foregroundStyle(.secondary) }
@@ -60,6 +65,8 @@ struct EpisodeDetailView: View {
                     }
                 }
                 Spacer()
+                Button { showingMetadata = true } label: { Image(systemName: "info.circle") }
+                    .buttonStyle(.borderless).help("Vis metadata og beskrivelse")
                 CopyMenu(markdown: { MarkdownSerializer.metadata(podcast: podcast, episode: episode) },
                          label: "Kopiér metadata")
             }
@@ -111,5 +118,79 @@ struct EpisodeDetailView: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
+    }
+}
+
+/// Podcast/episode artwork with a waveform placeholder while loading or when unavailable.
+struct EpisodeArtwork: View {
+    let url: String?
+    var size: CGFloat = 64
+
+    var body: some View {
+        AsyncImage(url: url.flatMap(URL.init)) { image in
+            image.resizable().aspectRatio(contentMode: .fill)
+        } placeholder: {
+            RoundedRectangle(cornerRadius: size * 0.18).fill(.quaternary)
+                .overlay(Image(systemName: "waveform").foregroundStyle(.secondary))
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.18))
+    }
+}
+
+/// Full metadata + description for an episode — the same info shown during search, now available
+/// from the episode itself (PRD-FEAT-014).
+struct EpisodeMetadataSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let episode: Episode
+    let podcast: Podcast?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                EpisodeArtwork(url: episode.artworkURL, size: 96)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(episode.title).font(.title3.bold()).lineLimit(3)
+                    if let podcast { Text(podcast.title).foregroundStyle(.secondary) }
+                    HStack(spacing: 10) {
+                        if let published = episode.publishedAt {
+                            Label(DateFormatting.medium(published), systemImage: "calendar").font(.caption)
+                        }
+                        if let duration = episode.durationSeconds {
+                            Label(TimeFormatting.duration(seconds: duration), systemImage: "clock").font(.caption)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                    StatusBadge(status: episode.transcriptStatus)
+                }
+                Spacer()
+            }
+
+            if let publisher = podcast?.publisher {
+                Text("Udgiver: \(publisher)").font(.callout).foregroundStyle(.secondary)
+            }
+
+            if let description = episode.descriptionMarkdown, !description.isEmpty {
+                Divider()
+                ScrollView {
+                    MarkdownText(markdown: description)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 240)
+            }
+
+            Spacer()
+            HStack {
+                CopyMenu(markdown: { MarkdownSerializer.metadata(podcast: podcast, episode: episode) },
+                         label: "Kopiér metadata")
+                if let url = URL(string: episode.appleURL), !episode.appleURL.isEmpty {
+                    Link(destination: url) { Label("Åbn i Podcasts", systemImage: "play.circle") }
+                }
+                Spacer()
+                Button("Luk") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 560, height: 480)
     }
 }

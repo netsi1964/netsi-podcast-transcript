@@ -16,6 +16,8 @@ struct FindState: Equatable {
     var query = ""
     var matchCount = 0
     var current = 0   // 0-based index of the active match
+    /// Literal text find (false) vs. embeddings-based semantic search (true).
+    var semantic = false
 
     mutating func next() { if matchCount > 0 { current = (current + 1) % matchCount } }
     mutating func previous() { if matchCount > 0 { current = (current - 1 + matchCount) % matchCount } }
@@ -34,6 +36,28 @@ enum TextSearch {
             start = r.upperBound
         }
         return count
+    }
+
+    /// Builds an `AttributedString` for a plain string with an orange background on every
+    /// case-insensitive match (`activeLocal` gets the brighter active style; -1 for none).
+    static func highlighted(_ text: String, query: String, activeLocal: Int) -> AttributedString {
+        var attr = AttributedString(text)
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return attr }
+        var start = text.startIndex
+        var index = 0
+        while let r = text.range(of: q, options: .caseInsensitive, range: start..<text.endIndex) {
+            let lowerOffset = text.distance(from: text.startIndex, to: r.lowerBound)
+            let length = text.distance(from: r.lowerBound, to: r.upperBound)
+            let lower = attr.index(attr.startIndex, offsetByCharacters: lowerOffset)
+            let upper = attr.index(lower, offsetByCharacters: length)
+            let isActive = index == activeLocal
+            attr[lower..<upper].backgroundColor = isActive ? Color.netsiOrange : Color.netsiOrange.opacity(0.35)
+            if isActive { attr[lower..<upper].foregroundColor = .black }
+            index += 1
+            start = r.upperBound
+        }
+        return attr
     }
 
     /// Maps a global active-match index onto a list of text blocks (e.g. output cards or chat
@@ -57,15 +81,23 @@ enum TextSearch {
 struct FindBar: View {
     @Binding var state: FindState
     var placeholder: String = "Find i teksten"
+    /// When true, offers a literal/semantic radio and (for semantic) an embedding-provider menu.
+    var semanticEnabled: Bool = false
+    var embeddingChoice: Binding<EmbeddingChoice>? = nil
+    var isRunning: Bool = false
+    /// Called when the user submits a semantic query (semantic search runs on Enter, not per key).
+    var onRunSemantic: (() -> Void)? = nil
     @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.callout)
-            TextField(placeholder, text: $state.query)
+            TextField(state.semantic ? "Beskriv hvad du leder efter…" : placeholder, text: $state.query)
                 .textFieldStyle(.plain)
                 .focused($focused)
-                .onSubmit { state.next() }
+                .onSubmit { if state.semantic { onRunSemantic?() } else { state.next() } }
+
+            if isRunning { ProgressView().controlSize(.small) }
 
             Text(state.query.isEmpty ? "" : "\(state.matchCount == 0 ? 0 : state.current + 1)/\(state.matchCount)")
                 .font(.caption.monospacedDigit())
@@ -80,6 +112,28 @@ struct FindBar: View {
                 .buttonStyle(.borderless).disabled(state.matchCount == 0)
                 .keyboardShortcut("g", modifiers: .command)
                 .help("Næste (⌘G)")
+
+            if semanticEnabled {
+                Divider().frame(height: 16)
+                Picker("", selection: $state.semantic) {
+                    Text("Tekst").tag(false)
+                    Text("Semantisk").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                if state.semantic, let embeddingChoice {
+                    Picker("", selection: embeddingChoice) {
+                        ForEach(EmbeddingChoice.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("Embedding-model til semantisk søgning")
+                    Button { onRunSemantic?() } label: { Image(systemName: "sparkle.magnifyingglass") }
+                        .buttonStyle(.borderless).help("Kør semantisk søgning (Enter)")
+                }
+            }
+
             Button { state.isPresented = false; state.query = "" } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
                 .keyboardShortcut(.cancelAction)

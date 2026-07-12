@@ -88,10 +88,7 @@ struct EpisodeRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(.quaternary)
-                .frame(width: 40, height: 40)
-                .overlay(Image(systemName: "waveform").foregroundStyle(.secondary))
+            EpisodeArtwork(url: episode.artworkURL, size: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(episode.title).lineLimit(1).font(.body.weight(.medium))
                 if let podcast = model.podcast(for: episode) {

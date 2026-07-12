@@ -7,8 +7,29 @@ enum AppIcon {
         let image = NSImage(size: NSSize(width: size, height: size))
         image.lockFocus()
         defer { image.unlockFocus() }
+        draw(in: NSRect(x: 0, y: 0, width: size, height: size))
+        return image
+    }
 
-        let rect = NSRect(x: 0, y: 0, width: size, height: size)
+    /// Renders a PNG headlessly (no running NSApplication needed) — used by the icon exporter
+    /// during app packaging.
+    static func pngData(size: Int) -> Data? {
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return nil }
+        rep.size = NSSize(width: size, height: size)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        draw(in: NSRect(x: 0, y: 0, width: size, height: size))
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    /// Draws the icon into the current graphics context, filling `rect`.
+    static func draw(in rect: NSRect) {
+        let size = rect.width
         let corner = size * 0.22
         let path = NSBezierPath(roundedRect: rect, xRadius: corner, yRadius: corner)
         path.addClip()
@@ -33,7 +54,5 @@ enum AppIcon {
             NSBezierPath(roundedRect: barRect, xRadius: barWidth / 2, yRadius: barWidth / 2).fill()
             x += barWidth + gap
         }
-
-        return image
     }
 }

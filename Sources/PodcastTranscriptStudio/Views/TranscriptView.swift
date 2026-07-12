@@ -19,6 +19,37 @@ struct TranscriptView: View {
     @State private var selectionForRun: String?
     @State private var find = FindState()
 
+    // Semantic search state (embeddings over segments).
+    @State private var embeddingChoice: EmbeddingChoice = .apple
+    @State private var docEmbeddings: [[Float]] = []
+    @State private var docEmbedKey = ""
+    @State private var semanticMatches: [(index: Int, score: Float)] = []
+    @State private var isSemanticRunning = false
+    @State private var semanticTask: Task<Void, Never>?
+
+    /// Literal find matches across the timecoded segments (only when that tab is active).
+    private var timecodeDist: (total: Int, activeCard: Int, activeLocal: Int) {
+        guard find.isPresented, mode == .timecodes, !find.semantic, !find.query.isEmpty else { return (0, -1, -1) }
+        return TextSearch.distribute(query: find.query, texts: segments.map(\.text), active: find.current)
+    }
+
+    /// segment index → its rank in the semantic results (for highlighting).
+    private var semanticRankByIndex: [Int: Int] {
+        Dictionary(uniqueKeysWithValues: semanticMatches.enumerated().map { ($0.element.index, $0.offset) })
+    }
+
+    /// The segment id to scroll to for the active match (literal or semantic).
+    private var activeSegmentID: String? {
+        if find.semantic {
+            guard find.current < semanticMatches.count else { return nil }
+            let idx = semanticMatches[find.current].index
+            return segments.indices.contains(idx) ? segments[idx].id : nil
+        } else {
+            guard timecodeDist.activeCard >= 0, segments.indices.contains(timecodeDist.activeCard) else { return nil }
+            return segments[timecodeDist.activeCard].id
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -30,7 +61,7 @@ struct TranscriptView: View {
                 .frame(width: 220)
                 Spacer()
                 Button { toggleFind() } label: { Image(systemName: "magnifyingglass") }
-                    .help("Find i teksten (⌘F)")
+                    .help(mode == .text ? "Find i teksten (⌘F)" : "Find i tidskoder (⌘F)")
                 if let transcript {
                     CopyIconMenu(markdown: { copyMarkdown(transcript) })
                 }
@@ -39,8 +70,14 @@ struct TranscriptView: View {
             Divider()
 
             if find.isPresented {
-                FindBar(state: $find)
-                    .onChange(of: find.query) { _, _ in find.reset() }
+                FindBar(state: $find, semanticEnabled: true, embeddingChoice: $embeddingChoice,
+                        isRunning: isSemanticRunning, onRunSemantic: runSemantic)
+                    .onChange(of: find.query) { _, _ in if !find.semantic { find.reset() } }
+                    .onChange(of: find.semantic) { _, sem in
+                        find.current = 0; find.matchCount = 0; semanticMatches = []
+                        if sem && mode == .text { mode = .timecodes }
+                    }
+                    .onChange(of: embeddingChoice) { _, _ in docEmbeddings = []; docEmbedKey = "" }
             }
 
             if transcript == nil {
@@ -54,9 +91,9 @@ struct TranscriptView: View {
                         selectionForRun = selected
                         runningPrompt = prompt
                     },
-                    highlightQuery: find.isPresented ? find.query : "",
+                    highlightQuery: (find.isPresented && !find.semantic) ? find.query : "",
                     activeMatch: find.current,
-                    onMatchCount: { if find.matchCount != $0 { find.matchCount = $0 } }
+                    onMatchCount: { if mode == .text, !find.semantic, find.matchCount != $0 { find.matchCount = $0 } }
                 )
             } else {
                 timecodeList
@@ -64,6 +101,11 @@ struct TranscriptView: View {
         }
         .background {
             Button("") { toggleFind() }.keyboardShortcut("f", modifiers: .command).hidden()
+        }
+        // Switching tab re-scopes the search to the newly active tab.
+        .onChange(of: mode) { _, _ in if !find.semantic { find.current = 0; find.matchCount = 0 } }
+        .onChange(of: timecodeDist.total) { _, total in
+            if mode == .timecodes, !find.semantic, find.matchCount != total { find.matchCount = total }
         }
         .task(id: episode.id) { load() }
         .sheet(item: $runningPrompt) { prompt in
@@ -85,28 +127,91 @@ struct TranscriptView: View {
     }
 
     /// Timecoded segment list; a selected segment enables "open at this point" (PRD-FEAT-013.2).
+    /// Find highlights matching segments (orange) and scrolls to the active one.
     private var timecodeList: some View {
-        List(segments, selection: $selectedSegmentID) { segment in
-            HStack(alignment: .top, spacing: 10) {
-                if let start = segment.startMs {
-                    Button(TimeFormatting.clock(ms: start)) {
-                        ExternalActions.openInPodcasts(episode: episode, atMs: start)
+        ScrollViewReader { proxy in
+            List(selection: $selectedSegmentID) {
+                ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
+                    HStack(alignment: .top, spacing: 10) {
+                        if let start = segment.startMs {
+                            Button(TimeFormatting.clock(ms: start)) {
+                                ExternalActions.openInPodcasts(episode: episode, atMs: start)
+                            }
+                            .buttonStyle(.link)
+                            .font(.caption.monospacedDigit())
+                            .frame(width: 64, alignment: .leading)
+                        }
+                        segmentText(segment, index: index)
                     }
-                    .buttonStyle(.link)
-                    .font(.caption.monospacedDigit())
-                    .frame(width: 64, alignment: .leading)
-                }
-                Text(segment.text).textSelection(.enabled)
-            }
-            .tag(segment.id)
-            .contextMenu {
-                Button("Kopiér segment") { Clipboard.copyMarkdown(segment.text) }
-                if let start = segment.startMs {
-                    Button("Åbn i Podcasts her") {
-                        ExternalActions.openInPodcasts(episode: episode, atMs: start)
+                    .tag(segment.id)
+                    .id(segment.id)
+                    .contextMenu {
+                        Button("Kopiér segment") { Clipboard.copyMarkdown(segment.text) }
+                        if let start = segment.startMs {
+                            Button("Åbn i Podcasts her") {
+                                ExternalActions.openInPodcasts(episode: episode, atMs: start)
+                            }
+                        }
                     }
                 }
             }
+            .onChange(of: find.current) { _, _ in
+                if let id = activeSegmentID { withAnimation { proxy.scrollTo(id, anchor: .center) } }
+            }
+        }
+    }
+
+    /// A segment's text, highlighting literal substring matches or (in semantic mode) shading the
+    /// whole segment orange when it's a semantic result.
+    @ViewBuilder
+    private func segmentText(_ segment: TranscriptSegment, index: Int) -> some View {
+        if find.isPresented && find.semantic {
+            let rank = semanticRankByIndex[index]
+            Text(segment.text)
+                .textSelection(.enabled)
+                .padding(.vertical, 2).padding(.horizontal, rank != nil ? 5 : 0)
+                .background {
+                    if let rank {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(rank == find.current ? Color.netsiOrange : Color.netsiOrange.opacity(0.3))
+                    }
+                }
+                .foregroundStyle(rank == find.current ? .black : .primary)
+        } else {
+            Text(TextSearch.highlighted(
+                segment.text,
+                query: find.isPresented ? find.query : "",
+                activeLocal: index == timecodeDist.activeCard ? timecodeDist.activeLocal : -1
+            ))
+            .textSelection(.enabled)
+        }
+    }
+
+    /// Runs embeddings-based semantic search over the segments (PRD-SEC-010). Segment vectors are
+    /// cached per transcript + embedding provider; only the query is re-embedded each run.
+    private func runSemantic() {
+        let query = find.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, !segments.isEmpty else { semanticMatches = []; find.matchCount = 0; return }
+        if mode == .text { mode = .timecodes }
+        semanticTask?.cancel()
+        isSemanticRunning = true
+        semanticTask = Task {
+            let texts = segments.map(\.text)
+            let key = (transcript?.id ?? "") + "|" + embeddingChoice.rawValue
+            if docEmbedKey != key || docEmbeddings.count != texts.count {
+                guard let docs = await model.embed(texts, choice: embeddingChoice), !Task.isCancelled else {
+                    isSemanticRunning = false; return
+                }
+                docEmbeddings = docs
+                docEmbedKey = key
+            }
+            guard let queryVector = (await model.embed([query], choice: embeddingChoice))?.first, !Task.isCancelled else {
+                isSemanticRunning = false; return
+            }
+            semanticMatches = SemanticSearch.rank(query: queryVector, docs: docEmbeddings)
+            find.current = 0
+            find.matchCount = semanticMatches.count
+            isSemanticRunning = false
         }
     }
 

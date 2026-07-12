@@ -69,6 +69,35 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Embeddings / semantic search (PRD-SEC-010)
+
+    /// Builds an embedding provider for the chosen backend, resolving URL/key from the configs.
+    func makeEmbeddingProvider(_ choice: EmbeddingChoice) -> EmbeddingProvider? {
+        switch choice {
+        case .apple:
+            return AppleEmbeddingProvider()
+        case .openAI:
+            guard let cfg = providerConfigs.first(where: { $0.providerType == .openAICompatible }) else { return nil }
+            let key = cfg.apiKeyKeychainRef.flatMap(Keychain.get) ?? ""
+            return OpenAIEmbeddingProvider(baseURL: cfg.baseURL ?? "https://api.openai.com/v1",
+                                           apiKey: key, model: "text-embedding-3-small")
+        case .ollama:
+            guard let cfg = providerConfigs.first(where: { $0.providerType == .ollama }) else { return nil }
+            return OllamaEmbeddingProvider(baseURL: cfg.baseURL ?? "http://localhost:11434",
+                                           model: "nomic-embed-text")
+        }
+    }
+
+    /// Embeds a batch of texts, surfacing errors via `lastError`. Returns nil on failure.
+    func embed(_ texts: [String], choice: EmbeddingChoice) async -> [[Float]]? {
+        guard let provider = makeEmbeddingProvider(choice) else {
+            lastError = "Embedding-provideren \(choice.displayName) er ikke konfigureret."
+            return nil
+        }
+        do { return try await provider.embed(texts) }
+        catch { lastError = error.localizedDescription; return nil }
+    }
+
     // MARK: - Catalogue search (PRD-SEC-010)
 
     /// Imports a podcast/episode found via search, using its rich metadata directly, then tries

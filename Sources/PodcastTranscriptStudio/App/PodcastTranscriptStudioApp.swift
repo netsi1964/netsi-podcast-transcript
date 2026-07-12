@@ -15,7 +15,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
+/// Entry point. Intercepts the `--export-iconset` build flag (writes icons and exits) before
+/// starting the SwiftUI app.
 @main
+enum AppLauncher {
+    static func main() {
+        if IconExport.handleIfRequested() { return }
+        PodcastTranscriptStudioApp.main()
+    }
+}
+
 struct PodcastTranscriptStudioApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model: AppModel

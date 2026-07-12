@@ -115,6 +115,25 @@ final class SRTExportTests: XCTestCase {
     }
 }
 
+final class SemanticSearchTests: XCTestCase {
+    func testCosineIdenticalIsOne() {
+        XCTAssertEqual(SemanticSearch.cosine([1, 0, 1], [1, 0, 1]), 1, accuracy: 0.0001)
+    }
+
+    func testCosineOrthogonalIsZero() {
+        XCTAssertEqual(SemanticSearch.cosine([1, 0], [0, 1]), 0, accuracy: 0.0001)
+    }
+
+    func testRankOrdersBySimilarityAndFilters() {
+        let query: [Float] = [1, 0]
+        let docs: [[Float]] = [[0, 1], [0.9, 0.1], [1, 0]]
+        let ranked = SemanticSearch.rank(query: query, docs: docs, topK: 2, minScore: 0.2)
+        XCTAssertEqual(ranked.count, 2)
+        XCTAssertEqual(ranked.first?.index, 2, "most similar doc ranks first")
+        XCTAssertFalse(ranked.contains { $0.index == 0 }, "orthogonal doc filtered out")
+    }
+}
+
 final class StoreTests: XCTestCase {
     func testUpsertDeduplicatesByAppleEpisodeID() throws {
         let store = try Store.inMemory()
