@@ -8,6 +8,12 @@ struct AboutView: View {
     private let linkedInURL = URL(string: "https://www.linkedin.com/in/stenhougaard/")!
     private let xURL = URL(string: "https://x.com/netsi1964")!
 
+    /// Read from the packaged .app's Info.plist (set from the git tag at build time). Falls back
+    /// to "dev" when run from source via `swift run`.
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             Image(nsImage: AppIcon.image(size: 128))
@@ -18,7 +24,7 @@ struct AboutView: View {
 
             VStack(spacing: 4) {
                 Text("Podcast Transcript Studio").font(.title2.bold())
-                Text("Version 0.9.5 · lokal-first macOS-app").font(.caption).foregroundStyle(.secondary)
+                Text("Version \(appVersion) · lokal-first macOS-app").font(.caption).foregroundStyle(.secondary)
             }
 
             Text("Lavet med **Claude Code** af **Sten Hougaard** (netsi1964).")

@@ -21,6 +21,8 @@ jobs:
         run: swift --version
 
       - name: Build .app bundle
+        env:
+          VERSION: ${{ github.ref_name }}   # e.g. "v0.9.5"; the script strips the leading "v"
         run: ./scripts/build-app.sh
 
       - name: Zip .app

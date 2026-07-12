@@ -9,7 +9,17 @@ cd "$ROOT"
 APP_DISPLAY_NAME="Podcast Transcript Studio"
 BIN_NAME="PodcastTranscriptStudio"
 BUNDLE_ID="dk.netsi.podcasttranscriptstudio"
-VERSION="0.9.5"
+# Version comes from one source: the git tag. Prefer an explicit $VERSION (CI passes the tag),
+# else the latest tag, else a dev marker. A leading "v" is stripped.
+_candidate="${VERSION:-}"
+_candidate="${_candidate#v}"
+if [[ "$_candidate" =~ ^[0-9] ]]; then
+    VERSION="$_candidate"
+else
+    VERSION="$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"
+    VERSION="${VERSION:-0.0.0-dev}"
+fi
+echo "▶︎ Version: $VERSION"
 
 BUILD_DIR="$ROOT/.build/release"
 DIST="$ROOT/dist"
