@@ -24,8 +24,24 @@ protocol EmbeddingProvider: Sendable {
 
 enum EmbeddingError: LocalizedError {
     case unavailable(String)
+    /// The endpoint/operation isn't available on this server (retry a legacy endpoint).
+    case endpointUnavailable
+    /// The chosen model exists but can't produce embeddings (e.g. a chat/vision model).
+    case modelCantEmbed(String)
+
     var errorDescription: String? {
-        switch self { case .unavailable(let m): return "Semantisk søgning er ikke tilgængelig: \(m)" }
+        switch self {
+        case .unavailable(let m):
+            return "Semantisk søgning er ikke tilgængelig: \(m)"
+        case .endpointUnavailable:
+            return "Semantisk søgning er ikke tilgængelig: endpoint mangler."
+        case .modelCantEmbed(let model):
+            return "Modellen '\(model)' understøtter ikke embeddings. "
+                + "Semantisk søgning kræver en embedding-model. Installer fx en af disse i Ollama:\n"
+                + "  ollama pull nomic-embed-text\n"
+                + "  ollama pull mxbai-embed-large\n"
+                + "…og vælg den i model-listen. (Eller brug Apple på enheden, som ikke kræver noget.)"
+        }
     }
 }
 
@@ -83,12 +99,27 @@ struct OpenAIEmbeddingProvider: EmbeddingProvider {
     }
 }
 
-/// Local Ollama `/api/embed` endpoint (batch input).
+/// Local Ollama embeddings. Requires an embedding-capable model (e.g. nomic-embed-text) — chat
+/// models return 500/501. Tries the modern `/api/embed` (batch) endpoint, then falls back to the
+/// legacy per-text `/api/embeddings` endpoint for older Ollama versions.
 struct OllamaEmbeddingProvider: EmbeddingProvider {
     let baseURL: String
     let model: String
 
     func embed(_ texts: [String]) async throws -> [[Float]] {
+        do {
+            return try await embedBatch(texts)
+        } catch let error as EmbeddingError {
+            // If the batch endpoint or op isn't available, try the legacy endpoint before failing.
+            if case .endpointUnavailable = error {
+                return try await embedLegacy(texts)
+            }
+            throw error
+        }
+    }
+
+    /// Modern `/api/embed` with a batch `input`.
+    private func embedBatch(_ texts: [String]) async throws -> [[Float]] {
         guard let url = URL(string: baseURL.trimmingTrailingSlash + "/api/embed") else {
             throw EmbeddingError.unavailable("ugyldig base-URL")
         }
@@ -99,12 +130,51 @@ struct OllamaEmbeddingProvider: EmbeddingProvider {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw EmbeddingError.unavailable("HTTP \(http.statusCode) — er modellen '\(model)' hentet?")
+            // 404 on the batch endpoint may mean an old Ollama without it — retry the legacy one.
+            if http.statusCode == 404 { throw EmbeddingError.endpointUnavailable }
+            throw Self.error(forStatus: http.statusCode, model: model)
         }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let vectors = json["embeddings"] as? [[Double]] else {
             throw EmbeddingError.unavailable("uventet svarformat")
         }
         return vectors.map { $0.map(Float.init) }
+    }
+
+    /// Legacy `/api/embeddings` — one text at a time, field `prompt`.
+    private func embedLegacy(_ texts: [String]) async throws -> [[Float]] {
+        guard let url = URL(string: baseURL.trimmingTrailingSlash + "/api/embeddings") else {
+            throw EmbeddingError.unavailable("ugyldig base-URL")
+        }
+        var results: [[Float]] = []
+        for text in texts {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "prompt": text])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                throw Self.error(forStatus: http.statusCode, model: model)
+            }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let vector = json["embedding"] as? [Double] else {
+                throw EmbeddingError.unavailable("uventet svarformat")
+            }
+            results.append(vector.map(Float.init))
+        }
+        return results
+    }
+
+    /// Turns an Ollama HTTP status into a clear, actionable message.
+    private static func error(forStatus status: Int, model: String) -> EmbeddingError {
+        switch status {
+        case 404:
+            return .unavailable("modellen '\(model)' er ikke hentet. Kør: ollama pull \(model)")
+        case 500, 501:
+            // The endpoint exists but the model can't embed (a chat/vision model was chosen).
+            return .modelCantEmbed(model)
+        default:
+            return .unavailable("HTTP \(status)")
+        }
     }
 }
