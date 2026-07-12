@@ -11,10 +11,39 @@ struct SearchSheet: View {
     @State private var results: [PodcastSearchResult] = []
     @State private var isSearching = false
     @State private var importingID: String?
+    @State private var importedIDs: Set<String> = []
     @State private var errorText: String?
     @State private var searchTask: Task<Void, Never>?
     @State private var importTask: Task<Void, Never>?
     @State private var detailResult: PodcastSearchResult?
+    @State private var sortField: SortField = .relevance
+    @State private var sortAscending = true
+
+    enum SortField: String, CaseIterable, Identifiable {
+        case relevance = "Relevans"
+        case title = "Titel"
+        case podcast = "Podcast"
+        case date = "Dato"
+        var id: String { rawValue }
+    }
+
+    /// Results sorted by the chosen field + direction (Relevans keeps Apple's own order).
+    private var sortedResults: [PodcastSearchResult] {
+        let base: [PodcastSearchResult]
+        switch sortField {
+        case .relevance:
+            base = results
+        case .title:
+            base = results.sorted {
+                ($0.episodeTitle ?? $0.podcastTitle).localizedCaseInsensitiveCompare($1.episodeTitle ?? $1.podcastTitle) == .orderedAscending
+            }
+        case .podcast:
+            base = results.sorted { $0.podcastTitle.localizedCaseInsensitiveCompare($1.podcastTitle) == .orderedAscending }
+        case .date:
+            base = results.sorted { ($0.releaseDate ?? .distantPast) < ($1.releaseDate ?? .distantPast) }
+        }
+        return sortAscending ? base : base.reversed()
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -54,10 +83,25 @@ struct SearchSheet: View {
                 )
                 .frame(maxHeight: .infinity)
             } else {
-                List(results) { result in
+                HStack(spacing: 6) {
+                    Text("Sortér:").font(.caption).foregroundStyle(.secondary)
+                    Picker("", selection: $sortField) {
+                        ForEach(SortField.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
+                    Button { sortAscending.toggle() } label: {
+                        Image(systemName: sortAscending ? "arrow.up" : "arrow.down")
+                    }
+                    .help(sortAscending ? "Stigende" : "Faldende")
+                    .disabled(sortField == .relevance)
+                    Spacer()
+                    Text("\(results.count) resultater").font(.caption).foregroundStyle(.secondary)
+                }
+                List(sortedResults) { result in
                     SearchResultRow(
                         result: result,
                         isImporting: importingID == result.id,
+                        isImported: importedIDs.contains(result.id),
                         onImport: { importResult(result) },
                         onSelect: { detailResult = result }
                     )
@@ -109,6 +153,8 @@ struct SearchSheet: View {
         }
     }
 
+    /// Imports a result but keeps the search open (import several) and keeps the query so the user
+    /// can keep browsing. Imported rows are marked with a checkmark.
     private func importResult(_ result: PodcastSearchResult) {
         importingID = result.id
         errorText = nil
@@ -117,13 +163,13 @@ struct SearchSheet: View {
             if Task.isCancelled { importingID = nil; return }
             importingID = nil
             if let id {
-                // Clear any library filter so the freshly imported episode is actually visible.
+                // Clear any library filter so the imported episode is visible once the sheet closes.
                 model.searchText = ""
                 model.refreshEpisodes()
                 selectedEpisodeID = id
-                dismiss()
+                importedIDs.insert(result.id)
             } else if result.kind == .podcast {
-                dismiss()
+                importedIDs.insert(result.id)
             } else {
                 errorText = model.lastError ?? "Kunne ikke importere episoden."
                 model.lastError = nil
@@ -140,6 +186,7 @@ struct SearchSheet: View {
 struct SearchResultRow: View {
     let result: PodcastSearchResult
     let isImporting: Bool
+    var isImported: Bool = false
     let onImport: () -> Void
     let onSelect: () -> Void
 
@@ -170,6 +217,11 @@ struct SearchResultRow: View {
                 .buttonStyle(.borderless).help("Vis detaljer")
             if isImporting {
                 ProgressView().controlSize(.small)
+            } else if isImported {
+                Label("Importeret", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green).font(.caption)
+                Button("Igen", action: onImport).buttonStyle(.bordered).controlSize(.small)
+                    .help("Importér igen / opdatér")
             } else {
                 Button("Importér", action: onImport).buttonStyle(.borderedProminent).controlSize(.small)
             }
