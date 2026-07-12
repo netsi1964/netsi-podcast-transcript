@@ -42,7 +42,8 @@ struct OutputHistoryView: View {
                                     OutputCard(
                                         output: output,
                                         highlight: find.isPresented ? find.query : "",
-                                        activeMatch: index == dist.activeCard ? dist.activeLocal : -1
+                                        activeMatch: index == dist.activeCard ? dist.activeLocal : -1,
+                                        onDelete: { delete(output) }
                                     )
                                     .id(output.id)
                                 }
@@ -66,6 +67,11 @@ struct OutputHistoryView: View {
         if !find.isPresented { find.query = "" }
     }
 
+    private func delete(_ output: AIOutput) {
+        try? model.store.deleteOutput(id: output.id)
+        reload()
+    }
+
     private func reload() {
         outputs = (try? model.store.outputs(episodeID: episode.id)) ?? []
     }
@@ -75,6 +81,8 @@ struct OutputCard: View {
     let output: AIOutput
     var highlight: String = ""
     var activeMatch: Int = 0
+    var onDelete: () -> Void = {}
+    @State private var confirmingDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -85,6 +93,15 @@ struct OutputCard: View {
                 Spacer()
                 Text(DateFormatting.medium(output.createdAt)).font(.caption).foregroundStyle(.secondary)
                 CopyIconMenu(markdown: { MarkdownSerializer.output(output, promptTitle: nil) })
+                Button(role: .destructive) { confirmingDelete = true } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .help("Slet dette AI-svar")
+                .confirmationDialog("Slet dette AI-svar?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                    Button("Slet", role: .destructive, action: onDelete)
+                    Button("Annullér", role: .cancel) {}
+                }
             }
             Divider()
             MarkdownText(markdown: output.outputMarkdown, highlight: highlight, activeMatch: activeMatch)

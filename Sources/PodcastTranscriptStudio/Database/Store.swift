@@ -172,7 +172,32 @@ final class Store {
     }
 
     func deleteEpisode(id: String) throws {
-        try sync { db in try db.run("DELETE FROM episode WHERE id=?;", [.text(id)]) }
+        try sync { db in
+            try db.transaction {
+                try db.run("DELETE FROM search_index WHERE episode_id=?;", [.text(id)])
+                try db.run("DELETE FROM episode WHERE id=?;", [.text(id)])
+            }
+        }
+    }
+
+    /// Deletes a podcast and, via ON DELETE CASCADE, all its episodes/transcripts/outputs. Search
+    /// rows aren't FK-linked, so they're cleared explicitly first.
+    func deletePodcast(id: String) throws {
+        try sync { db in
+            try db.transaction {
+                try db.run("DELETE FROM search_index WHERE episode_id IN (SELECT id FROM episode WHERE podcast_id=?);", [.text(id)])
+                try db.run("DELETE FROM podcast WHERE id=?;", [.text(id)])
+            }
+        }
+    }
+
+    func deleteOutput(id: String) throws {
+        try sync { db in
+            try db.transaction {
+                try db.run("DELETE FROM search_index WHERE kind='output' AND ref_id=?;", [.text(id)])
+                try db.run("DELETE FROM ai_output WHERE id=?;", [.text(id)])
+            }
+        }
     }
 
     /// Relevance-ranked snippets across all transcripts/outputs, used to build archive-chat

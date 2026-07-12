@@ -34,10 +34,20 @@ struct LibrarySidebar: View {
                         Button("Indlæs transcript igen") {
                             Task { await model.fetchTranscript(for: episode) }
                         }
+                        Divider()
                         Button("Slet episode", role: .destructive) {
                             try? model.store.deleteEpisode(id: episode.id)
                             if selectedEpisodeID == episode.id { selectedEpisodeID = nil }
                             model.refreshEpisodes()
+                        }
+                        if let podcast = model.podcast(for: episode) {
+                            Button("Slet podcast og alle episoder", role: .destructive) {
+                                try? model.store.deletePodcast(id: podcast.id)
+                                model.refreshEpisodes()
+                                if !model.episodes.contains(where: { $0.id == selectedEpisodeID }) {
+                                    selectedEpisodeID = nil
+                                }
+                            }
                         }
                     }
             }

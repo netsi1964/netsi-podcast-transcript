@@ -13,6 +13,8 @@ struct SearchSheet: View {
     @State private var importingID: String?
     @State private var errorText: String?
     @State private var searchTask: Task<Void, Never>?
+    @State private var importTask: Task<Void, Never>?
+    @State private var detailResult: PodcastSearchResult?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -53,15 +55,41 @@ struct SearchSheet: View {
                 .frame(maxHeight: .infinity)
             } else {
                 List(results) { result in
-                    SearchResultRow(result: result, isImporting: importingID == result.id) {
-                        importResult(result)
-                    }
+                    SearchResultRow(
+                        result: result,
+                        isImporting: importingID == result.id,
+                        onImport: { importResult(result) },
+                        onSelect: { detailResult = result }
+                    )
                 }
                 .listStyle(.inset)
             }
         }
         .padding(20)
         .frame(width: 620, height: 560)
+        .overlay { if importingID != nil { importingOverlay } }
+        .sheet(item: $detailResult) { result in
+            SearchResultDetail(
+                result: result,
+                isImporting: importingID == result.id,
+                onImport: { detailResult = nil; importResult(result) }
+            )
+        }
+    }
+
+    /// Blocking loading state with Annuller (also bound to Esc) so an import can't feel stuck.
+    private var importingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.25).ignoresSafeArea()
+            VStack(spacing: 14) {
+                ProgressView()
+                Text("Importerer…").font(.headline)
+                Button("Annullér", role: .cancel) { cancelImport() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(28)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        }
     }
 
     private func runSearch() {
@@ -83,19 +111,29 @@ struct SearchSheet: View {
 
     private func importResult(_ result: PodcastSearchResult) {
         importingID = result.id
-        Task {
+        errorText = nil
+        importTask = Task {
             let id = await model.importSearchResult(result)
+            if Task.isCancelled { importingID = nil; return }
             importingID = nil
             if let id {
+                // Clear any library filter so the freshly imported episode is actually visible.
+                model.searchText = ""
+                model.refreshEpisodes()
                 selectedEpisodeID = id
                 dismiss()
             } else if result.kind == .podcast {
-                dismiss()   // podcast shell added
+                dismiss()
             } else {
                 errorText = model.lastError ?? "Kunne ikke importere episoden."
                 model.lastError = nil
             }
         }
+    }
+
+    private func cancelImport() {
+        importTask?.cancel()
+        importingID = nil
     }
 }
 
@@ -103,18 +141,11 @@ struct SearchResultRow: View {
     let result: PodcastSearchResult
     let isImporting: Bool
     let onImport: () -> Void
+    let onSelect: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: result.artworkURL.flatMap(URL.init)) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 6).fill(.quaternary)
-                    .overlay(Image(systemName: "waveform").foregroundStyle(.secondary))
-            }
-            .frame(width: 52, height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-
+            artwork
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.episodeTitle ?? result.podcastTitle)
                     .font(.body.weight(.medium)).lineLimit(2)
@@ -130,7 +161,13 @@ struct SearchResultRow: View {
                     }
                 }
             }
+            // Tapping the info area opens details (PRD-FEAT-001 details before import).
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onSelect)
+
             Spacer()
+            Button { onSelect() } label: { Image(systemName: "info.circle") }
+                .buttonStyle(.borderless).help("Vis detaljer")
             if isImporting {
                 ProgressView().controlSize(.small)
             } else {
@@ -138,5 +175,88 @@ struct SearchResultRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var artwork: some View {
+        AsyncImage(url: result.artworkURL.flatMap(URL.init)) { image in
+            image.resizable().aspectRatio(contentMode: .fill)
+        } placeholder: {
+            RoundedRectangle(cornerRadius: 6).fill(.quaternary)
+                .overlay(Image(systemName: "waveform").foregroundStyle(.secondary))
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+    }
+}
+
+/// Detail preview of a search result before importing.
+struct SearchResultDetail: View {
+    @Environment(\.dismiss) private var dismiss
+    let result: PodcastSearchResult
+    let isImporting: Bool
+    let onImport: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                AsyncImage(url: result.artworkURL.flatMap(URL.init)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 10).fill(.quaternary)
+                        .overlay(Image(systemName: "waveform").foregroundStyle(.secondary))
+                }
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.episodeTitle ?? result.podcastTitle).font(.title3.bold()).lineLimit(3)
+                    if result.episodeTitle != nil {
+                        Text(result.podcastTitle).foregroundStyle(.secondary)
+                    }
+                    HStack(spacing: 10) {
+                        if let date = result.releaseDate {
+                            Label(DateFormatting.medium(date), systemImage: "calendar").font(.caption)
+                        }
+                        if let dur = result.durationSeconds {
+                            Label(TimeFormatting.duration(seconds: dur), systemImage: "clock").font(.caption)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            if let description = result.descriptionText, !description.isEmpty {
+                Divider()
+                ScrollView {
+                    Text(description)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 220)
+            }
+
+            Spacer()
+            HStack {
+                if let appleURL = result.appleURL, let url = URL(string: appleURL) {
+                    Link(destination: url) { Label("Åbn i Podcasts", systemImage: "play.circle") }
+                }
+                Spacer()
+                Button("Luk") { dismiss() }.keyboardShortcut(.cancelAction)
+                if isImporting {
+                    ProgressView().controlSize(.small)
+                } else if result.kind == .episode {
+                    Button("Importér", action: onImport)
+                        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                } else {
+                    Button("Tilføj podcast", action: onImport).buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 540, height: 460)
     }
 }

@@ -37,18 +37,24 @@ struct AppleTranscriptProvider: TranscriptProvider {
     /// Falls back to the newest `.ttml` in a folder that clearly matches the episode.
     private func locateTranscriptFile(episodeID: String?) -> URL? {
         let fm = FileManager.default
+        // Bound the walk so a huge Group Containers tree can never make the fetch hang, and bail
+        // out early if the task was cancelled.
+        let maxEntries = 40_000
         for root in candidateDirectories {
+            guard fm.fileExists(atPath: root.path) else { continue }
             guard let enumerator = fm.enumerator(
                 at: root, includingPropertiesForKeys: [.contentModificationDateKey],
                 options: [.skipsHiddenFiles]
             ) else { continue }
 
             var newestMatch: (url: URL, date: Date)?
-            for case let url as URL in enumerator where url.pathExtension.lowercased() == "ttml" {
+            var scanned = 0
+            for case let url as URL in enumerator {
+                scanned += 1
+                if scanned > maxEntries || Task.isCancelled { break }
+                guard url.pathExtension.lowercased() == "ttml" else { continue }
                 let name = url.lastPathComponent
-                let matches: Bool
-                if let episodeID { matches = name.contains(episodeID) } else { matches = true }
-                guard matches else { continue }
+                if let episodeID, !name.contains(episodeID) { continue }
                 let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
                     .contentModificationDate ?? .distantPast
                 if newestMatch == nil || date > newestMatch!.date {

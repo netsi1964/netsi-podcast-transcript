@@ -18,7 +18,7 @@ struct AboutView: View {
 
             VStack(spacing: 4) {
                 Text("Podcast Transcript Studio").font(.title2.bold())
-                Text("Version 1.0 · lokal-first macOS-app").font(.caption).foregroundStyle(.secondary)
+                Text("Version 0.9 · lokal-first macOS-app").font(.caption).foregroundStyle(.secondary)
             }
 
             Text("Lavet med **Claude Code** af **Sten Hougaard** (netsi1964).")
