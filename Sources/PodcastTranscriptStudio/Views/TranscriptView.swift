@@ -26,6 +26,7 @@ struct TranscriptView: View {
     @State private var isLoadingEmbeddingModels = false
     @State private var docEmbeddings: [[Float]] = []
     @State private var docEmbedKey = ""
+    @State private var lastQueryVector: [Float]?
     @State private var semanticMatches: [(index: Int, score: Float)] = []
     @State private var isSemanticRunning = false
     @State private var semanticTask: Task<Void, Never>?
@@ -39,6 +40,17 @@ struct TranscriptView: View {
     /// segment index → its rank in the semantic results (for highlighting).
     private var semanticRankByIndex: [Int: Int] {
         Dictionary(uniqueKeysWithValues: semanticMatches.enumerated().map { ($0.element.index, $0.offset) })
+    }
+
+    /// Changes whenever the episode or its transcript state changes, so the view reloads.
+    private var reloadKey: String {
+        "\(episode.id)|\(episode.transcriptStatus.rawValue)|\(episode.transcriptLastLoadedAt?.timeIntervalSince1970 ?? 0)"
+    }
+
+    /// Ranked segment texts to highlight in the reading (text) view for semantic search.
+    private var semanticHighlightTexts: [String] {
+        guard find.isPresented, find.semantic else { return [] }
+        return semanticMatches.compactMap { segments.indices.contains($0.index) ? segments[$0.index].text : nil }
     }
 
     /// The segment id to scroll to for the active match (literal or semantic).
@@ -78,12 +90,15 @@ struct TranscriptView: View {
                         isLoadingEmbeddingModels: isLoadingEmbeddingModels,
                         reloadEmbeddingModels: loadEmbeddingModels,
                         isRunning: isSemanticRunning, onRunSemantic: runSemantic)
-                    .onChange(of: find.query) { _, _ in if !find.semantic { find.reset() } }
+                    .onChange(of: find.query) { _, _ in
+                        if !find.semantic { find.reset() } else { lastQueryVector = nil }
+                    }
                     .onChange(of: find.semantic) { _, sem in
-                        find.current = 0; find.matchCount = 0; semanticMatches = []
-                        if sem && mode == .text { mode = .timecodes }
+                        find.current = 0; find.matchCount = 0; semanticMatches = []; lastQueryVector = nil
                         if sem { loadEmbeddingModels() }
                     }
+                    // Live re-rank when the relevance slider moves (uses cached embeddings).
+                    .onChange(of: find.threshold) { _, _ in rerank() }
                     .onChange(of: embeddingChoice) { _, _ in
                         docEmbeddings = []; docEmbedKey = ""; embeddingModel = ""; loadEmbeddingModels()
                     }
@@ -102,7 +117,9 @@ struct TranscriptView: View {
                     },
                     highlightQuery: (find.isPresented && !find.semantic) ? find.query : "",
                     activeMatch: find.current,
-                    onMatchCount: { if mode == .text, !find.semantic, find.matchCount != $0 { find.matchCount = $0 } }
+                    onMatchCount: { if mode == .text, !find.semantic, find.matchCount != $0 { find.matchCount = $0 } },
+                    semanticHighlights: mode == .text ? semanticHighlightTexts : [],
+                    semanticActive: find.current
                 )
             } else {
                 timecodeList
@@ -116,7 +133,9 @@ struct TranscriptView: View {
         .onChange(of: timecodeDist.total) { _, total in
             if mode == .timecodes, !find.semantic, find.matchCount != total { find.matchCount = total }
         }
-        .task(id: episode.id) { load() }
+        // Reload when the episode changes OR its transcript was (re)loaded — so pressing
+        // "Indlæs igen" while viewing the episode picks up the freshly fetched transcript.
+        .task(id: reloadKey) { load() }
         .sheet(item: $runningPrompt) { prompt in
             PromptRunSheet(prompt: prompt, episode: episode, selectionText: selectionForRun)
         }
@@ -177,7 +196,14 @@ struct TranscriptView: View {
                 }
             }
             .onChange(of: find.current) { _, _ in
-                if let id = activeSegmentID { withAnimation { proxy.scrollTo(id, anchor: .center) } }
+                // Select + scroll (no animation) so navigating always lands on the active match.
+                if let id = activeSegmentID {
+                    selectedSegmentID = id
+                    proxy.scrollTo(id, anchor: .center)
+                }
+            }
+            .onChange(of: find.matchCount) { _, _ in
+                if let id = activeSegmentID { selectedSegmentID = id; proxy.scrollTo(id, anchor: .center) }
             }
         }
     }
@@ -214,11 +240,10 @@ struct TranscriptView: View {
         guard embeddingChoice != .apple else { embeddingModels = []; return }
         isLoadingEmbeddingModels = true
         Task {
-            let models = await model.listEmbeddingModels(embeddingChoice)
+            let models = await model.listEmbeddingModels(embeddingChoice)  // already embedding-only
             embeddingModels = models
             if embeddingModel.isEmpty || !models.contains(embeddingModel) {
-                embeddingModel = models.first(where: { $0.localizedCaseInsensitiveContains("embed") })
-                    ?? AppModel.defaultEmbeddingModel(embeddingChoice)
+                embeddingModel = models.first ?? AppModel.defaultEmbeddingModel(embeddingChoice)
             }
             isLoadingEmbeddingModels = false
         }
@@ -229,27 +254,34 @@ struct TranscriptView: View {
     private func runSemantic() {
         let query = find.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, !segments.isEmpty else { semanticMatches = []; find.matchCount = 0; return }
-        if mode == .text { mode = .timecodes }
         semanticTask?.cancel()
         isSemanticRunning = true
         semanticTask = Task {
             let texts = segments.map(\.text)
             let key = (transcript?.id ?? "") + "|" + embeddingChoice.rawValue + "|" + embeddingModel
             if docEmbedKey != key || docEmbeddings.count != texts.count {
-                guard let docs = await model.embed(texts, choice: embeddingChoice, model: embeddingModel), !Task.isCancelled else {
-                    isSemanticRunning = false; return
-                }
+                guard let docs = await model.embed(texts, choice: embeddingChoice, model: embeddingModel, role: .document),
+                      !Task.isCancelled else { isSemanticRunning = false; return }
                 docEmbeddings = docs
                 docEmbedKey = key
             }
-            guard let queryVector = (await model.embed([query], choice: embeddingChoice, model: embeddingModel))?.first, !Task.isCancelled else {
-                isSemanticRunning = false; return
-            }
-            semanticMatches = SemanticSearch.rank(query: queryVector, docs: docEmbeddings)
-            find.current = 0
-            find.matchCount = semanticMatches.count
+            guard let queryVector = (await model.embed([query], choice: embeddingChoice, model: embeddingModel, role: .query))?.first,
+                  !Task.isCancelled else { isSemanticRunning = false; return }
+            lastQueryVector = queryVector
+            rerank()
             isSemanticRunning = false
         }
+    }
+
+    /// Re-ranks the cached embeddings against the current threshold — instant, no network — so the
+    /// relevance slider updates results live.
+    private func rerank() {
+        guard let queryVector = lastQueryVector, !docEmbeddings.isEmpty else { return }
+        semanticMatches = SemanticSearch.rank(
+            query: queryVector, docs: docEmbeddings, topK: 30, minScore: Float(find.threshold)
+        )
+        find.current = 0
+        find.matchCount = semanticMatches.count
     }
 
     private func toggleFind() {

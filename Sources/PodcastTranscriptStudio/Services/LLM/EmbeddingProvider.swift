@@ -16,10 +16,14 @@ enum EmbeddingChoice: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Whether a text is a search query or a stored document — some models (e.g. nomic-embed-text)
+/// need different task prefixes for each to produce comparable vectors.
+enum EmbeddingRole: Sendable { case query, document }
+
 /// Produces vector embeddings for a batch of texts, for semantic (vector) search
 /// (PRD-SEC-010: embeddings-baseret semantisk søgning).
 protocol EmbeddingProvider: Sendable {
-    func embed(_ texts: [String]) async throws -> [[Float]]
+    func embed(_ texts: [String], role: EmbeddingRole) async throws -> [[Float]]
 }
 
 enum EmbeddingError: LocalizedError {
@@ -47,7 +51,7 @@ enum EmbeddingError: LocalizedError {
 
 /// On-device sentence embeddings via Apple's NaturalLanguage framework — no network, no key.
 struct AppleEmbeddingProvider: EmbeddingProvider {
-    func embed(_ texts: [String]) async throws -> [[Float]] {
+    func embed(_ texts: [String], role: EmbeddingRole) async throws -> [[Float]] {
         guard let embedding = NLEmbedding.sentenceEmbedding(for: .danish)
                 ?? NLEmbedding.sentenceEmbedding(for: .english) else {
             throw EmbeddingError.unavailable("ingen on-device sætnings-model på denne macOS")
@@ -76,7 +80,7 @@ struct OpenAIEmbeddingProvider: EmbeddingProvider {
     let apiKey: String
     let model: String
 
-    func embed(_ texts: [String]) async throws -> [[Float]] {
+    func embed(_ texts: [String], role: EmbeddingRole) async throws -> [[Float]] {
         guard !apiKey.isEmpty else { throw EmbeddingError.unavailable("mangler OpenAI API key") }
         guard let url = URL(string: baseURL.trimmingTrailingSlash + "/embeddings") else {
             throw EmbeddingError.unavailable("ugyldig base-URL")
@@ -106,16 +110,24 @@ struct OllamaEmbeddingProvider: EmbeddingProvider {
     let baseURL: String
     let model: String
 
-    func embed(_ texts: [String]) async throws -> [[Float]] {
+    func embed(_ texts: [String], role: EmbeddingRole) async throws -> [[Float]] {
+        let prepared = texts.map { prefixed($0, role: role) }
         do {
-            return try await embedBatch(texts)
+            return try await embedBatch(prepared)
         } catch let error as EmbeddingError {
             // If the batch endpoint or op isn't available, try the legacy endpoint before failing.
             if case .endpointUnavailable = error {
-                return try await embedLegacy(texts)
+                return try await embedLegacy(prepared)
             }
             throw error
         }
+    }
+
+    /// nomic-embed-text was trained with task prefixes; adding them sharply improves relevance so
+    /// unrelated queries score low. Other models are passed through unchanged.
+    private func prefixed(_ text: String, role: EmbeddingRole) -> String {
+        guard model.lowercased().contains("nomic") else { return text }
+        return (role == .query ? "search_query: " : "search_document: ") + text
     }
 
     /// Modern `/api/embed` with a batch `input`.

@@ -64,6 +64,35 @@ Ved første start opretter appen automatisk:
 - **Ollama:** kør `ollama serve` lokalt — appen finder den på `http://localhost:11434`
 - **Apple Intelligence:** bruges automatisk hvis din Mac understøtter Foundation Models
 
+## Søgning i transcript
+
+I transcript-fanen åbner **⌘F** en søgelinje med to tilstande:
+
+- **Tekst:** almindelig ordsøgning der fremhæver forekomster (orange) med forrige/næste.
+- **Semantisk:** finder afsnit efter *betydning* i stedet for præcise ord. Du beskriver hvad du
+  leder efter, trykker Enter, og de mest relevante segmenter rangeres og fremhæves.
+
+### Sådan får du en embedding-model til semantisk søgning
+
+Semantisk søgning kræver en **embedding-model** (den omdanner tekst til vektorer). Vælg backend i
+søgelinjen:
+
+- **Apple (på enheden)** — anbefalet start. Bruger macOS' indbyggede `NaturalLanguage`-model.
+  Kræver **ingen** installation eller nøgle og virker offline.
+- **Ollama (lokal)** — kræver en embedding-model installeret. Almindelige chat-modeller (llama,
+  qwen, gemma …) kan **ikke** lave embeddings og giver fejl. Installer én af disse:
+
+  ```bash
+  ollama pull nomic-embed-text     # let og hurtig (274 MB)
+  ollama pull mxbai-embed-large    # større, ofte bedre kvalitet
+  ```
+
+  Tryk derefter 🔄 i søgelinjen for at genindlæse listen. Kun embedding-modeller vises.
+- **OpenAI** — bruger `text-embedding-3-small` som standard (kræver API key i Indstillinger).
+
+Modellisten i søgelinjen viser kun sandsynlige embedding-modeller; brug "Egen…" hvis du vil
+skrive et model-id manuelt.
+
 ## Projektstruktur
 
 ```

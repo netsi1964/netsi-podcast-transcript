@@ -98,16 +98,18 @@ final class AppModel: ObservableObject {
     }
 
     /// Embeds a batch of texts, surfacing errors via `lastError`. Returns nil on failure.
-    func embed(_ texts: [String], choice: EmbeddingChoice, model: String) async -> [[Float]]? {
+    func embed(_ texts: [String], choice: EmbeddingChoice, model: String, role: EmbeddingRole) async -> [[Float]]? {
         guard let provider = makeEmbeddingProvider(choice, model: model) else {
             lastError = "Embedding-provideren \(choice.displayName) er ikke konfigureret."
             return nil
         }
-        do { return try await provider.embed(texts) }
+        do { return try await provider.embed(texts, role: role) }
         catch { lastError = error.localizedDescription; return nil }
     }
 
     /// Lists candidate embedding models for the chosen backend (empty for Apple / on-device).
+    /// The provider APIs don't flag which models embed, so non-embedding (chat/vision) models are
+    /// filtered out by name — they return 500/501 for embeddings and shouldn't be offered.
     func listEmbeddingModels(_ choice: EmbeddingChoice) async -> [String] {
         let type: ProviderType
         switch choice {
@@ -116,7 +118,16 @@ final class AppModel: ObservableObject {
         case .ollama: type = .ollama
         }
         guard let cfg = providerConfigs.first(where: { $0.providerType == type }) else { return [] }
-        return await LLMProviderFactory.make(from: cfg).listModels()
+        let all = await LLMProviderFactory.make(from: cfg).listModels()
+        return all.filter(AppModel.isLikelyEmbeddingModel)
+    }
+
+    /// Name-based heuristic for embedding-capable models (nomic-embed-text, mxbai-embed-large,
+    /// text-embedding-3-small, bge/gte/minilm/arctic families, …).
+    static func isLikelyEmbeddingModel(_ name: String) -> Bool {
+        let hints = ["embed", "nomic", "mxbai", "minilm", "bge", "gte", "arctic", "snowflake"]
+        let lower = name.lowercased()
+        return hints.contains { lower.contains($0) }
     }
 
     // MARK: - Catalogue search (PRD-SEC-010)

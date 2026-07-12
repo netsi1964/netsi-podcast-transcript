@@ -9,10 +9,13 @@ struct SelectableTranscriptView: NSViewRepresentable {
     let prompts: [Prompt]
     /// Called with the chosen prompt and the selected text (nil = no selection → use everything).
     let onRun: (Prompt, String?) -> Void
-    /// In-text find: highlight matches (orange), scroll to the active one, report match count.
+    /// Literal in-text find: highlight matches (orange), scroll to the active one, report count.
     var highlightQuery: String = ""
     var activeMatch: Int = 0
     var onMatchCount: (Int) -> Void = { _ in }
+    /// Semantic find: whole segment texts to highlight, ranked; `semanticActive` is the current one.
+    var semanticHighlights: [String] = []
+    var semanticActive: Int = 0
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = PromptTextView()
@@ -45,8 +48,12 @@ struct SelectableTranscriptView: NSViewRepresentable {
             textView.cachedMarkdown = markdown
             textView.textStorage?.setAttributedString(TranscriptAttributedString.make(from: markdown))
         }
-        let count = textView.applyHighlights(query: highlightQuery, active: activeMatch)
-        DispatchQueue.main.async { onMatchCount(count) }
+        if !semanticHighlights.isEmpty {
+            textView.applySemanticHighlights(texts: semanticHighlights, active: semanticActive)
+        } else {
+            let count = textView.applyHighlights(query: highlightQuery, active: activeMatch)
+            DispatchQueue.main.async { onMatchCount(count) }
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -124,6 +131,31 @@ final class PromptTextView: NSTextView {
             scrollRangeToVisible(ranges[active])
         }
         return ranges.count
+    }
+
+    /// Highlights whole segment texts (semantic results), brighter for the active one, and scrolls
+    /// the active segment into view.
+    func applySemanticHighlights(texts: [String], active: Int) {
+        guard let layoutManager, let textStorage else { return }
+        let fullRange = NSRange(location: 0, length: textStorage.length)
+        layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: fullRange)
+        layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: fullRange)
+
+        let haystack = textStorage.string as NSString
+        var activeRange: NSRange?
+        for (index, text) in texts.enumerated() where !text.isEmpty {
+            let range = haystack.range(of: text)
+            guard range.location != NSNotFound else { continue }
+            let isActive = index == active
+            layoutManager.addTemporaryAttribute(.backgroundColor,
+                value: isActive ? NSColor.netsiOrange : NSColor.netsiOrange.withAlphaComponent(0.35),
+                forCharacterRange: range)
+            if isActive {
+                layoutManager.addTemporaryAttribute(.foregroundColor, value: NSColor.black, forCharacterRange: range)
+                activeRange = range
+            }
+        }
+        if let activeRange { scrollRangeToVisible(activeRange) }
     }
 }
 

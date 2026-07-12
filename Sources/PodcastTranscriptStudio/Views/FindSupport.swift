@@ -18,6 +18,8 @@ struct FindState: Equatable {
     var current = 0   // 0-based index of the active match
     /// Literal text find (false) vs. embeddings-based semantic search (true).
     var semantic = false
+    /// Minimum cosine similarity for a semantic match — higher = fewer, more relevant results.
+    var threshold: Double = 0.45
 
     mutating func next() { if matchCount > 0 { current = (current + 1) % matchCount } }
     mutating func previous() { if matchCount > 0 { current = (current - 1 + matchCount) % matchCount } }
@@ -141,8 +143,21 @@ struct FindBar: View {
                                     reload: { reloadEmbeddingModels?() })
                             .frame(maxWidth: 220)
                     }
-                    Button { onRunSemantic?() } label: { Image(systemName: "sparkle.magnifyingglass") }
-                        .buttonStyle(.borderless).help("Kør semantisk søgning (Enter)")
+                    // Relevance threshold — drag right to find fewer, more relevant afsnit.
+                    HStack(spacing: 4) {
+                        Image(systemName: "slider.horizontal.3").font(.caption2).foregroundStyle(.secondary)
+                        Slider(value: $state.threshold, in: 0.2...0.75)
+                            .frame(width: 90)
+                            .help("Relevans-tærskel: højere = færre, mere relevante afsnit")
+                        Text(String(format: "%.2f", state.threshold))
+                            .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                            .frame(width: 30)
+                    }
+                    Button("Søg") { onRunSemantic?() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(state.query.trimmingCharacters(in: .whitespaces).isEmpty || isRunning)
+                        .help("Kør semantisk søgning (Enter)")
                 }
             }
 
