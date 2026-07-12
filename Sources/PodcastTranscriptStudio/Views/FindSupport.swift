@@ -84,6 +84,11 @@ struct FindBar: View {
     /// When true, offers a literal/semantic radio and (for semantic) an embedding-provider menu.
     var semanticEnabled: Bool = false
     var embeddingChoice: Binding<EmbeddingChoice>? = nil
+    /// Embedding model selection (shown for non-Apple backends).
+    var embeddingModel: Binding<String>? = nil
+    var embeddingModels: [String] = []
+    var isLoadingEmbeddingModels: Bool = false
+    var reloadEmbeddingModels: (() -> Void)? = nil
     var isRunning: Bool = false
     /// Called when the user submits a semantic query (semantic search runs on Enter, not per key).
     var onRunSemantic: (() -> Void)? = nil
@@ -128,7 +133,14 @@ struct FindBar: View {
                     }
                     .labelsHidden()
                     .fixedSize()
-                    .help("Embedding-model til semantisk søgning")
+                    .help("Embedding-backend til semantisk søgning")
+                    // Model picker for non-Apple backends (e.g. choose an installed Ollama model).
+                    if embeddingChoice.wrappedValue != .apple, let embeddingModel {
+                        ModelPicker(model: embeddingModel, options: embeddingModels,
+                                    isLoading: isLoadingEmbeddingModels,
+                                    reload: { reloadEmbeddingModels?() })
+                            .frame(maxWidth: 220)
+                    }
                     Button { onRunSemantic?() } label: { Image(systemName: "sparkle.magnifyingglass") }
                         .buttonStyle(.borderless).help("Kør semantisk søgning (Enter)")
                 }

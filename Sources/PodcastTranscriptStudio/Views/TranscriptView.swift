@@ -21,6 +21,9 @@ struct TranscriptView: View {
 
     // Semantic search state (embeddings over segments).
     @State private var embeddingChoice: EmbeddingChoice = .apple
+    @State private var embeddingModel = ""
+    @State private var embeddingModels: [String] = []
+    @State private var isLoadingEmbeddingModels = false
     @State private var docEmbeddings: [[Float]] = []
     @State private var docEmbedKey = ""
     @State private var semanticMatches: [(index: Int, score: Float)] = []
@@ -71,13 +74,19 @@ struct TranscriptView: View {
 
             if find.isPresented {
                 FindBar(state: $find, semanticEnabled: true, embeddingChoice: $embeddingChoice,
+                        embeddingModel: $embeddingModel, embeddingModels: embeddingModels,
+                        isLoadingEmbeddingModels: isLoadingEmbeddingModels,
+                        reloadEmbeddingModels: loadEmbeddingModels,
                         isRunning: isSemanticRunning, onRunSemantic: runSemantic)
                     .onChange(of: find.query) { _, _ in if !find.semantic { find.reset() } }
                     .onChange(of: find.semantic) { _, sem in
                         find.current = 0; find.matchCount = 0; semanticMatches = []
                         if sem && mode == .text { mode = .timecodes }
+                        if sem { loadEmbeddingModels() }
                     }
-                    .onChange(of: embeddingChoice) { _, _ in docEmbeddings = []; docEmbedKey = "" }
+                    .onChange(of: embeddingChoice) { _, _ in
+                        docEmbeddings = []; docEmbedKey = ""; embeddingModel = ""; loadEmbeddingModels()
+                    }
             }
 
             if transcript == nil {
@@ -199,8 +208,24 @@ struct TranscriptView: View {
         }
     }
 
+    /// Loads candidate embedding models for the chosen backend, and picks a sensible default
+    /// (prefers a model whose name mentions "embed").
+    private func loadEmbeddingModels() {
+        guard embeddingChoice != .apple else { embeddingModels = []; return }
+        isLoadingEmbeddingModels = true
+        Task {
+            let models = await model.listEmbeddingModels(embeddingChoice)
+            embeddingModels = models
+            if embeddingModel.isEmpty || !models.contains(embeddingModel) {
+                embeddingModel = models.first(where: { $0.localizedCaseInsensitiveContains("embed") })
+                    ?? AppModel.defaultEmbeddingModel(embeddingChoice)
+            }
+            isLoadingEmbeddingModels = false
+        }
+    }
+
     /// Runs embeddings-based semantic search over the segments (PRD-SEC-010). Segment vectors are
-    /// cached per transcript + embedding provider; only the query is re-embedded each run.
+    /// cached per transcript + embedding provider + model; only the query is re-embedded each run.
     private func runSemantic() {
         let query = find.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, !segments.isEmpty else { semanticMatches = []; find.matchCount = 0; return }
@@ -209,15 +234,15 @@ struct TranscriptView: View {
         isSemanticRunning = true
         semanticTask = Task {
             let texts = segments.map(\.text)
-            let key = (transcript?.id ?? "") + "|" + embeddingChoice.rawValue
+            let key = (transcript?.id ?? "") + "|" + embeddingChoice.rawValue + "|" + embeddingModel
             if docEmbedKey != key || docEmbeddings.count != texts.count {
-                guard let docs = await model.embed(texts, choice: embeddingChoice), !Task.isCancelled else {
+                guard let docs = await model.embed(texts, choice: embeddingChoice, model: embeddingModel), !Task.isCancelled else {
                     isSemanticRunning = false; return
                 }
                 docEmbeddings = docs
                 docEmbedKey = key
             }
-            guard let queryVector = (await model.embed([query], choice: embeddingChoice))?.first, !Task.isCancelled else {
+            guard let queryVector = (await model.embed([query], choice: embeddingChoice, model: embeddingModel))?.first, !Task.isCancelled else {
                 isSemanticRunning = false; return
             }
             semanticMatches = SemanticSearch.rank(query: queryVector, docs: docEmbeddings)

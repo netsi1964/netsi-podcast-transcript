@@ -71,8 +71,18 @@ final class AppModel: ObservableObject {
 
     // MARK: - Embeddings / semantic search (PRD-SEC-010)
 
-    /// Builds an embedding provider for the chosen backend, resolving URL/key from the configs.
-    func makeEmbeddingProvider(_ choice: EmbeddingChoice) -> EmbeddingProvider? {
+    /// Default embedding model per backend when the user hasn't picked one.
+    static func defaultEmbeddingModel(_ choice: EmbeddingChoice) -> String {
+        switch choice {
+        case .apple: return "on-device"
+        case .openAI: return "text-embedding-3-small"
+        case .ollama: return "nomic-embed-text"
+        }
+    }
+
+    /// Builds an embedding provider for the chosen backend + model, resolving URL/key from configs.
+    func makeEmbeddingProvider(_ choice: EmbeddingChoice, model: String) -> EmbeddingProvider? {
+        let modelName = model.isEmpty ? AppModel.defaultEmbeddingModel(choice) : model
         switch choice {
         case .apple:
             return AppleEmbeddingProvider()
@@ -80,22 +90,33 @@ final class AppModel: ObservableObject {
             guard let cfg = providerConfigs.first(where: { $0.providerType == .openAICompatible }) else { return nil }
             let key = cfg.apiKeyKeychainRef.flatMap(Keychain.get) ?? ""
             return OpenAIEmbeddingProvider(baseURL: cfg.baseURL ?? "https://api.openai.com/v1",
-                                           apiKey: key, model: "text-embedding-3-small")
+                                           apiKey: key, model: modelName)
         case .ollama:
             guard let cfg = providerConfigs.first(where: { $0.providerType == .ollama }) else { return nil }
-            return OllamaEmbeddingProvider(baseURL: cfg.baseURL ?? "http://localhost:11434",
-                                           model: "nomic-embed-text")
+            return OllamaEmbeddingProvider(baseURL: cfg.baseURL ?? "http://localhost:11434", model: modelName)
         }
     }
 
     /// Embeds a batch of texts, surfacing errors via `lastError`. Returns nil on failure.
-    func embed(_ texts: [String], choice: EmbeddingChoice) async -> [[Float]]? {
-        guard let provider = makeEmbeddingProvider(choice) else {
+    func embed(_ texts: [String], choice: EmbeddingChoice, model: String) async -> [[Float]]? {
+        guard let provider = makeEmbeddingProvider(choice, model: model) else {
             lastError = "Embedding-provideren \(choice.displayName) er ikke konfigureret."
             return nil
         }
         do { return try await provider.embed(texts) }
         catch { lastError = error.localizedDescription; return nil }
+    }
+
+    /// Lists candidate embedding models for the chosen backend (empty for Apple / on-device).
+    func listEmbeddingModels(_ choice: EmbeddingChoice) async -> [String] {
+        let type: ProviderType
+        switch choice {
+        case .apple: return []
+        case .openAI: type = .openAICompatible
+        case .ollama: type = .ollama
+        }
+        guard let cfg = providerConfigs.first(where: { $0.providerType == type }) else { return [] }
+        return await LLMProviderFactory.make(from: cfg).listModels()
     }
 
     // MARK: - Catalogue search (PRD-SEC-010)
