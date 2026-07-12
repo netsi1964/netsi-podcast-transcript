@@ -21,10 +21,12 @@ enum FrontmatterParser {
 
         var fields: [String: String] = [:]
         var bodyStart = lines.count
+        var foundClosing = false
         for index in 1..<lines.count {
             let line = lines[index]
             if line.trimmingCharacters(in: .whitespaces) == "---" {
                 bodyStart = index + 1
+                foundClosing = true
                 break
             }
             guard let colon = line.firstIndex(of: ":") else { continue }
@@ -32,6 +34,12 @@ enum FrontmatterParser {
             var value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
             value = value.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
             if !key.isEmpty { fields[key] = value }
+        }
+
+        // No closing "---" ⇒ the leading "---" was a horizontal rule, not frontmatter. Treat the
+        // whole file as the prompt body so a plain Markdown prompt still works.
+        guard foundClosing else {
+            return FrontmatterDocument(fields: [:], body: text, hadFrontmatter: false)
         }
 
         let body = lines[bodyStart...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)

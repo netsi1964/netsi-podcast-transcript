@@ -7,8 +7,9 @@ import Combine
 final class PromptService: ObservableObject {
     @Published private(set) var prompts: [Prompt] = []
 
-    /// Prompts whose frontmatter is missing or malformed — drives the fix flow (PRD-FEAT-007).
-    var invalidPrompts: [Prompt] { prompts.filter { $0.validationStatus != .valid } }
+    /// Only genuinely-broken prompts (empty files) drive the fix banner — warnings still run, so we
+    /// don't nag about optional frontmatter (PRD-FEAT-007).
+    var invalidPrompts: [Prompt] { prompts.filter { $0.validationStatus == .invalid } }
 
     let folderURL: URL
     private let store: Store
@@ -40,14 +41,12 @@ final class PromptService: ObservableObject {
 
     private func ensureFolderAndDefaults() {
         let fm = FileManager.default
-        let existed = fm.fileExists(atPath: folderURL.path)
         try? fm.createDirectory(at: folderURL, withIntermediateDirectories: true)
 
-        let contents = (try? fm.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: nil)) ?? []
-        let hasMarkdown = contents.contains { $0.pathExtension == "md" }
-        guard !existed || !hasMarkdown else { return }
-
-        // First run (or emptied folder): copy bundled defaults in (PRD-FEAT-006 acceptance).
+        // Seed bundled defaults per-file: any default that isn't already in the folder gets
+        // copied in — on first run this seeds everything (PRD-FEAT-006 acceptance), and on later
+        // launches it delivers newly bundled defaults without touching the user's existing or
+        // edited prompts. A default the user has deliberately deleted will reappear next launch.
         guard let seedDir = Bundle.module.url(forResource: "DefaultPrompts", withExtension: nil),
               let seeds = try? fm.contentsOfDirectory(at: seedDir, includingPropertiesForKeys: nil)
         else { return }

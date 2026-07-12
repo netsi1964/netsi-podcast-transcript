@@ -30,18 +30,19 @@ enum PromptLoader {
 
     /// A prompt is `invalid` if it has no usable body or no frontmatter at all; `warning`
     /// if recommended metadata is missing; otherwise `valid` (PRD-FEAT-007 acceptance).
+    /// A prompt only needs instruction text — a plain `.md` file works, with the title taken from
+    /// the filename. Frontmatter is optional polish, so its absence is at most a gentle warning,
+    /// never `invalid` (only an empty file is invalid).
     static func validate(doc: FrontmatterDocument) -> (PromptValidationStatus, String?) {
         if doc.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return (.invalid, "Prompten har ingen brødtekst.")
+            return (.invalid, "Prompten er tom – skriv din instruktion i filen.")
         }
         if !doc.hadFrontmatter {
-            return (.invalid, "Filen mangler frontmatter (`---` blok med title, version osv.).")
+            // Perfectly usable; title comes from the filename. Just a hint, not a problem.
+            return (.warning, "Ingen frontmatter – titel tages fra filnavnet.")
         }
-        var missing: [String] = []
-        if (doc.fields["title"] ?? "").isEmpty { missing.append("title") }
-        if (doc.fields["version"] ?? "").isEmpty { missing.append("version") }
-        if !missing.isEmpty {
-            return (.warning, "Mangler anbefalet metadata: \(missing.joined(separator: ", ")).")
+        if (doc.fields["title"] ?? "").isEmpty {
+            return (.warning, "Mangler anbefalet metadata: title.")
         }
         return (.valid, nil)
     }

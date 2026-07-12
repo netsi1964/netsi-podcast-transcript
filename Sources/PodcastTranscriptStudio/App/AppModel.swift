@@ -337,7 +337,14 @@ final class AppModel: ObservableObject {
             sourceText = transcript.plainText
             transcriptID = transcript.id
         }
-        let filled = prompt.bodyMarkdown.replacingOccurrences(of: "{{transcript}}", with: sourceText)
+        // Use the {{transcript}} placeholder if present; otherwise just append the transcript, so
+        // a prompt doesn't have to include the placeholder to work.
+        let filled: String
+        if prompt.bodyMarkdown.contains("{{transcript}}") {
+            filled = prompt.bodyMarkdown.replacingOccurrences(of: "{{transcript}}", with: sourceText)
+        } else {
+            filled = prompt.bodyMarkdown + "\n\n---\n\nTranscript:\n\n" + sourceText
+        }
         return PreparedRun(
             provider: LLMProviderFactory.make(from: config),
             messages: [LLMMessage(role: .user, content: filled)],

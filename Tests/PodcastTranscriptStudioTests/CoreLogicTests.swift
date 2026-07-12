@@ -84,8 +84,15 @@ final class FrontmatterTests: XCTestCase {
         XCTAssertEqual(doc.body, "Body text here")
     }
 
-    func testMissingFrontmatterIsInvalid() {
+    func testMissingFrontmatterIsUsable() {
+        // A plain prompt file (no frontmatter) is usable — a warning at most, never invalid.
         let doc = FrontmatterParser.parse("Just a body, no frontmatter")
+        let (status, _) = PromptLoader.validate(doc: doc)
+        XCTAssertEqual(status, .warning)
+    }
+
+    func testEmptyPromptIsInvalid() {
+        let doc = FrontmatterParser.parse("---\ntitle: X\n---\n")
         let (status, _) = PromptLoader.validate(doc: doc)
         XCTAssertEqual(status, .invalid)
     }
