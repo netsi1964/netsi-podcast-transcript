@@ -28,14 +28,16 @@ final class ChatController: ObservableObject {
         self.model = model
         self.scope = scope
         self.episode = episode
-        let config = model.providerConfigs.first(where: \.isEnabled)
-        configID = config?.id ?? model.providerConfigs.first?.id ?? ""
-        modelName = config?.defaultModel ?? ""
+        // Default to the last provider/model the user ran, else the first enabled provider.
+        let remembered = model.rememberedProviderID.flatMap { id in model.providerConfigs.first { $0.id == id } }
+        let config = remembered ?? model.providerConfigs.first(where: \.isEnabled) ?? model.providerConfigs.first
+        configID = config?.id ?? ""
+        modelName = (remembered != nil ? model.rememberedModel : nil) ?? config?.defaultModel ?? ""
         let session = ChatSession(
             scope: scope, episodeID: episode?.id,
             title: scope == .episode ? episode?.title : "Arkiv-chat",
             providerType: config?.providerType ?? .appleFoundationModels,
-            model: config?.defaultModel ?? "system"
+            model: modelName.isEmpty ? "system" : modelName
         )
         self.session = session
         try? model.store.saveChatSession(session)
@@ -73,6 +75,7 @@ final class ChatController: ObservableObject {
         let llmMessages = buildMessages(userText: text)
         let provider = LLMProviderFactory.make(from: config)
         let modelName = self.modelName.isEmpty ? (config.defaultModel ?? "system") : self.modelName
+        model.rememberProvider(id: config.id, model: modelName)   // remember for next time
 
         // Append an empty assistant message and stream tokens into it live.
         var assistant = ChatMessage(

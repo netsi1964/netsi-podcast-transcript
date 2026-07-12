@@ -245,6 +245,22 @@ final class AppModel: ObservableObject {
         providerConfigs = (try? store.providerConfigs()) ?? []
     }
 
+    // The last provider/model the user actually ran, remembered across launches so prompt runs
+    // and chat default to it.
+    var rememberedProviderID: String? {
+        get { UserDefaults.standard.string(forKey: "lastProviderID") }
+        set { UserDefaults.standard.set(newValue, forKey: "lastProviderID") }
+    }
+    var rememberedModel: String? {
+        get { UserDefaults.standard.string(forKey: "lastModel") }
+        set { UserDefaults.standard.set(newValue, forKey: "lastModel") }
+    }
+
+    func rememberProvider(id: String, model: String) {
+        rememberedProviderID = id
+        rememberedModel = model
+    }
+
     private func seedDefaultProvidersIfNeeded() {
         guard (try? store.providerConfigs())?.isEmpty ?? true else { return }
         let defaults = [

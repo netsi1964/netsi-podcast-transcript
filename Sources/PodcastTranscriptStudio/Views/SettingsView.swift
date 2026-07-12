@@ -4,14 +4,36 @@ import SwiftUI
 struct SettingsView: View {
     var body: some View {
         TabView {
+            GeneralSettings()
+                .tabItem { Label(L("Generelt"), systemImage: "gearshape") }
             ProvidersSettings()
-                .tabItem { Label("LLM-providere", systemImage: "cpu") }
+                .tabItem { Label(L("LLM-providere"), systemImage: "cpu") }
             PromptFolderSettings()
-                .tabItem { Label("Prompts", systemImage: "text.badge.star") }
+                .tabItem { Label(L("Prompts"), systemImage: "text.badge.star") }
             DataSettings()
-                .tabItem { Label("Data", systemImage: "externaldrive") }
+                .tabItem { Label(L("Data"), systemImage: "externaldrive") }
         }
         .frame(width: 560, height: 460)
+    }
+}
+
+/// General app settings, including the UI language.
+struct GeneralSettings: View {
+    @EnvironmentObject var loc: Localizer
+
+    var body: some View {
+        Form {
+            Section(L("Sprog")) {
+                Picker(L("Sprog"), selection: $loc.language) {
+                    ForEach(AppLanguage.allCases) { Text($0.displayName).tag($0) }
+                }
+                Text(L("Vælg sprog for appen. \"Følg macOS\" bruger dit systemsprog (engelsk, hvis din Mac ikke er på dansk)."))
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 

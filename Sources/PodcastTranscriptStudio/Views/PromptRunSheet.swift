@@ -156,11 +156,17 @@ struct PromptRunSheet: View {
         }
     }
 
-    /// Preselects the prompt's preferred provider/model, else the first configured provider.
+    /// Preselects the last-used provider/model (remembered across launches), else the prompt's
+    /// preferred one, else the first configured provider.
     private func preselect() {
-        let config = model.resolveConfig(preferred: prompt.preferredProvider)
-        configID = config?.id ?? model.providerConfigs.first?.id ?? ""
-        modelName = prompt.preferredModel ?? selectedConfig?.defaultModel ?? config?.defaultModel ?? ""
+        if let remembered = model.rememberedProviderID, model.providerConfigs.contains(where: { $0.id == remembered }) {
+            configID = remembered
+            modelName = model.rememberedModel ?? selectedConfig?.defaultModel ?? ""
+        } else {
+            let config = model.resolveConfig(preferred: prompt.preferredProvider)
+            configID = config?.id ?? model.providerConfigs.first?.id ?? ""
+            modelName = prompt.preferredModel ?? selectedConfig?.defaultModel ?? config?.defaultModel ?? ""
+        }
         loadModels()
     }
 
@@ -190,6 +196,7 @@ struct PromptRunSheet: View {
         guard let prepared = model.preparePromptRun(prompt, on: episode, using: config, overrideText: selectionText) else {
             errorText = model.lastError; model.lastError = nil; return
         }
+        model.rememberProvider(id: config.id, model: modelName)   // remember for next time
         errorText = nil
         result = nil
         streamedText = ""

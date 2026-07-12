@@ -28,6 +28,7 @@ enum AppLauncher {
 struct PodcastTranscriptStudioApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model: AppModel
+    @StateObject private var loc = Localizer.shared
 
     init() {
         // Fall back to an in-memory store if the on-disk database can't be opened, so the app
@@ -45,8 +46,11 @@ struct PodcastTranscriptStudioApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(model)
+                .environmentObject(loc)
                 .frame(minWidth: 900, minHeight: 600)
                 .onAppear { model.bootstrap() }
+                // Re-create the tree when the language changes so every L(...) re-evaluates.
+                .id(loc.effectiveCode)
         }
         .commands {
             SidebarCommands()
@@ -59,10 +63,14 @@ struct PodcastTranscriptStudioApp: App {
         Settings {
             SettingsView()
                 .environmentObject(model)
+                .environmentObject(loc)
+                .id(loc.effectiveCode)
         }
 
-        Window("Om Podcast Transcript Studio", id: "about") {
+        Window(L("Om Podcast Transcript Studio"), id: "about") {
             AboutView()
+                .environmentObject(loc)
+                .id(loc.effectiveCode)
         }
         .windowResizability(.contentSize)
     }
@@ -72,6 +80,6 @@ struct PodcastTranscriptStudioApp: App {
 private struct AboutMenuButton: View {
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        Button("Om Podcast Transcript Studio") { openWindow(id: "about") }
+        Button(L("Om Podcast Transcript Studio")) { openWindow(id: "about") }
     }
 }
