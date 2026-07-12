@@ -1,10 +1,11 @@
 name: Build macOS app
 
-# Builds the double-clickable .app and attaches it to the GitHub Release.
-# Triggers automatically when you publish a Release; can also be run manually.
+# Pushing a version tag (e.g. v0.9.5) builds the .app, creates the GitHub Release,
+# and attaches the zip — all automatically. Can also be run manually.
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -33,10 +34,17 @@ jobs:
           name: PodcastTranscriptStudio-macos-arm64
           path: dist/PodcastTranscriptStudio-macos-arm64.zip
 
-      - name: Attach to release
-        if: github.event_name == 'release'
+      - name: Create release and attach app
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSET: dist/PodcastTranscriptStudio-macos-arm64.zip
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
-            "dist/PodcastTranscriptStudio-macos-arm64.zip" --clobber
+          # Create the release if it doesn't exist yet; otherwise just (re)upload the asset.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ASSET" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$ASSET" \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file .github/release-notes.md
+          fi

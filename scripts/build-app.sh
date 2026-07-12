@@ -9,7 +9,7 @@ cd "$ROOT"
 APP_DISPLAY_NAME="Podcast Transcript Studio"
 BIN_NAME="PodcastTranscriptStudio"
 BUNDLE_ID="dk.netsi.podcasttranscriptstudio"
-VERSION="0.9"
+VERSION="0.9.5"
 
 BUILD_DIR="$ROOT/.build/release"
 DIST="$ROOT/dist"
