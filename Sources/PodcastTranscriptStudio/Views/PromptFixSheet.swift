@@ -13,6 +13,7 @@ struct PromptFixSheet: View {
     @State private var preferredProvider = ""
     @State private var preferredModel = ""
     @State private var outputType = "markdown"
+    @State private var promptBody = ""
     @State private var errorText: String?
 
     var body: some View {
@@ -33,6 +34,12 @@ struct PromptFixSheet: View {
                 TextField("Output-type", text: $outputType)
             }
             .textFieldStyle(.roundedBorder)
+
+            Text("Prompt-tekst (instruktionen der køres):").font(.callout.weight(.medium))
+            TextEditor(text: $promptBody)
+                .font(.body.monospaced())
+                .frame(minHeight: 120)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
 
             if let errorText {
                 Label(errorText, systemImage: "xmark.octagon").foregroundStyle(.red).font(.callout)
@@ -59,6 +66,13 @@ struct PromptFixSheet: View {
         preferredProvider = prompt.preferredProvider ?? ""
         preferredModel = prompt.preferredModel ?? ""
         outputType = prompt.outputType ?? "markdown"
+        promptBody = prompt.bodyMarkdown
+        // Salvage an instruction that was accidentally typed into a frontmatter field.
+        if promptBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let misplaced = prompt.preferredProvider, misplaced.count > 25 {
+            promptBody = misplaced
+            preferredProvider = ""
+        }
     }
 
     private func save() {
@@ -68,7 +82,7 @@ struct PromptFixSheet: View {
             ("outputType", outputType)
         ]
         do {
-            try model.prompts.writeFixedPrompt(prompt, fields: fields)
+            try model.prompts.writeFixedPrompt(prompt, fields: fields, body: promptBody)
             dismiss()
         } catch {
             errorText = error.localizedDescription

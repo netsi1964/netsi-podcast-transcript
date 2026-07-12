@@ -86,8 +86,8 @@ final class PromptService: ObservableObject {
     }
 
     /// Writes a repaired prompt back to its file; the watcher then reloads it (PRD-FEAT-007).
-    func writeFixedPrompt(_ prompt: Prompt, fields: [(String, String)]) throws {
-        let contents = FrontmatterParser.render(fields: fields, body: prompt.bodyMarkdown)
+    func writeFixedPrompt(_ prompt: Prompt, fields: [(String, String)], body: String) throws {
+        let contents = FrontmatterParser.render(fields: fields, body: body)
         try contents.write(to: URL(fileURLWithPath: prompt.filePath), atomically: true, encoding: .utf8)
         reloadNow()
     }
