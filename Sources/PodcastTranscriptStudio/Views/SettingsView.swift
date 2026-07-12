@@ -134,9 +134,9 @@ struct ProviderCard: View {
         }
     }
 
-    /// Queries the provider for its models using the *currently edited* URL/key, so the list
-    /// reflects unsaved changes.
-    private func loadModels() {
+    /// A config reflecting the *currently edited* URL/key (persists the key to Keychain so the
+    /// provider can use it), for probing models and availability before "Gem".
+    private func probeConfig() -> LLMProviderConfig {
         var probe = config
         probe.baseURL = baseURL.isEmpty ? nil : baseURL
         if needsKey {
@@ -144,8 +144,13 @@ struct ProviderCard: View {
             if !apiKey.isEmpty { Keychain.set(apiKey, ref: ref) }
             probe.apiKeyKeychainRef = ref
         }
+        return probe
+    }
+
+    /// Queries the provider for its models using the currently edited URL/key.
+    private func loadModels() {
         isLoadingModels = true
-        let provider = LLMProviderFactory.make(from: probe)
+        let provider = LLMProviderFactory.make(from: probeConfig())
         Task {
             availableModels = await provider.listModels()
             if defaultModel.isEmpty { defaultModel = availableModels.first ?? "" }
@@ -166,6 +171,8 @@ struct ProviderCard: View {
         }
         try? model.store.saveProviderConfig(updated)
         model.reloadProviders()
+        // Refresh the model list now that the key is saved.
+        loadModels()
 
         // Visible confirmation, auto-dismissed after a moment (addresses "no save feedback").
         withAnimation { didSave = true }
@@ -176,7 +183,7 @@ struct ProviderCard: View {
 
     private func test() {
         availability = "Tester…"
-        let provider = LLMProviderFactory.make(from: config)
+        let provider = LLMProviderFactory.make(from: probeConfig())
         Task {
             let ok = await provider.isAvailable()
             availability = ok ? "✅ Tilgængelig" : "⚠️ Ikke tilgængelig"

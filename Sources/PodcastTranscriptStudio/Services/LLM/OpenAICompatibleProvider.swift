@@ -7,7 +7,11 @@ struct OpenAICompatibleProvider: LLMProvider {
     let baseURL: String
     let apiKey: String
 
-    func isAvailable() async -> Bool { !apiKey.isEmpty }
+    /// A real check: a valid key can list models. Empty result ⇒ missing/invalid key or bad URL.
+    func isAvailable() async -> Bool {
+        guard !apiKey.isEmpty else { return false }
+        return !(await listModels()).isEmpty
+    }
 
     /// Lists models via the `/models` endpoint (PRD-FEAT-008.2). Chat-capable ids are hard to
     /// tell apart generically, so we return them all, sorted, for the user to choose from.
@@ -47,7 +51,7 @@ struct OpenAICompatibleProvider: LLMProvider {
         }
 
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw LLMError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            throw Self.error(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -83,7 +87,10 @@ struct OpenAICompatibleProvider: LLMProvider {
 
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
                     if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                        throw LLMError.http(http.statusCode, "")
+                        // Read the (JSON) error body from the stream so the message is useful.
+                        var body = ""
+                        for try await line in bytes.lines { body += line; if body.count > 2000 { break } }
+                        throw Self.error(status: http.statusCode, body: body)
                     }
                     for try await line in bytes.lines {
                         try Task.checkCancellation()
@@ -107,6 +114,31 @@ struct OpenAICompatibleProvider: LLMProvider {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+}
+
+extension OpenAICompatibleProvider {
+    /// Turns an HTTP status + response body into a clear, actionable error. Extracts OpenAI's
+    /// `error.message` when present and adds a hint for the common failure codes.
+    static func error(status: Int, body: String) -> LLMError {
+        var detail = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let data = body.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let err = json["error"] as? [String: Any],
+           let message = err["message"] as? String {
+            detail = message
+        }
+        let hint: String
+        switch status {
+        case 401: hint = "API-nøglen er ugyldig eller mangler adgang. Tjek nøglen i Indstillinger."
+        case 402: hint = "Betaling kræves — tjek din OpenAI-billing/kredit."
+        case 404: hint = "Modellen findes ikke eller din konto har ikke adgang til den. Vælg en anden model."
+        case 429: hint = "Rate limit eller kvote opbrugt. Tjek din OpenAI-kvote/billing (platform.openai.com → Usage/Billing), eller prøv igen om lidt."
+        case 500, 502, 503: hint = "Provideren har midlertidige problemer. Prøv igen om lidt."
+        default: hint = ""
+        }
+        let combined = [hint, detail.isEmpty ? nil : "Detaljer: \(detail)"].compactMap { $0 }.joined(separator: "\n")
+        return .http(status, combined)
     }
 }
 
