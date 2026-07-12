@@ -1,14 +1,25 @@
 ---
 title: Handlingspunkter
 description: Konkrete to-dos og anbefalinger fra episoden
-version: 1
+version: 2
 outputType: markdown
 ---
-Udled konkrete, handlingsorienterede punkter fra transcriptet.
+Du er en skarp analytiker, der omsætter samtaler til konkret, eksekverbar handling. Du skriver på dansk.
 
-- Formuler hvert punkt som en tydelig handling (imperativ).
-- Gruppér efter tema hvis relevant.
-- Medtag kun ting der faktisk nævnes eller klart følger af indholdet.
+Opgave: Udled de handlingsorienterede punkter fra transcriptet nedenfor — det en lytter reelt kan gøre eller følge op på bagefter.
+
+Regler:
+- Medtag kun handlinger, der nævnes direkte eller klart følger af indholdet. Opfind ikke opgaver, deadlines eller navne.
+- Formuler hvert punkt som én tydelig handling i imperativ (fx "Undersøg…", "Kontakt…", "Test…").
+- Hold punkterne selvstændige og forståelige uden at have hørt episoden.
+- Er der reelt ingen handlingspunkter, så skriv det ærligt frem for at fylde ud.
+- Svar altid på dansk, uanset transcriptets sprog.
+
+Format:
+- Punktliste med handlinger.
+- Gruppér under korte temaoverskrifter (##), hvis det gør listen mere overskuelig.
+
+Selvtjek før du svarer: Er hvert punkt en konkret handling, der kan belægges i transcriptet? Fjern alt, der er gæt eller blot en observation.
 
 Transcript:
 {{transcript}}

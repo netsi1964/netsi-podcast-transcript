@@ -31,17 +31,17 @@ struct LibrarySidebar: View {
                 EpisodeRow(episode: episode)
                     .tag(episode.id)
                     .contextMenu {
-                        Button("Indlæs transcript igen") {
+                        Button(L("Indlæs transcript igen")) {
                             Task { await model.fetchTranscript(for: episode) }
                         }
                         Divider()
-                        Button("Slet episode", role: .destructive) {
+                        Button(L("Slet episode"), role: .destructive) {
                             try? model.store.deleteEpisode(id: episode.id)
                             if selectedEpisodeID == episode.id { selectedEpisodeID = nil }
                             model.refreshEpisodes()
                         }
                         if let podcast = model.podcast(for: episode) {
-                            Button("Slet podcast og alle episoder", role: .destructive) {
+                            Button(L("Slet podcast og alle episoder"), role: .destructive) {
                                 try? model.store.deletePodcast(id: podcast.id)
                                 model.refreshEpisodes()
                                 if !model.episodes.contains(where: { $0.id == selectedEpisodeID }) {
@@ -52,12 +52,12 @@ struct LibrarySidebar: View {
                     }
             }
         }
-        .searchable(text: $model.searchText, prompt: "Søg i titel, podcast, transcript, output")
+        .searchable(text: $model.searchText, prompt: Text(L("Søg i titel, podcast, transcript, output")))
         .onChange(of: model.searchText) { _, _ in model.refreshEpisodes() }
         .safeAreaInset(edge: .top) {
             HStack {
-                Picker("Sortér", selection: $sort) {
-                    ForEach(SortOption.allCases) { Text($0.rawValue).tag($0) }
+                Picker(L("Sortér"), selection: $sort) {
+                    ForEach(SortOption.allCases) { Text(L($0.rawValue)).tag($0) }
                 }
                 .labelsHidden()
                 .fixedSize()
@@ -67,18 +67,18 @@ struct LibrarySidebar: View {
                 } label: {
                     Image(systemName: "magnifyingglass")
                 }
-                .help("Søg i Apple Podcasts")
+                .help(L("Søg i Apple Podcasts"))
                 Button {
                     showingImport = true
                 } label: {
                     Image(systemName: "plus")
                 }
-                .help("Importér episode via link")
+                .help(L("Importér episode via link"))
             }
             .padding(8)
             .background(.bar)
         }
-        .navigationTitle("Bibliotek")
+        .navigationTitle(L("Bibliotek"))
     }
 }
 
@@ -106,7 +106,7 @@ struct StatusBadge: View {
     let status: TranscriptStatus
 
     var body: some View {
-        Text(status.label)
+        Text(L(status.label))
             .font(.caption2.weight(.medium))
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(tint.opacity(0.18), in: Capsule())

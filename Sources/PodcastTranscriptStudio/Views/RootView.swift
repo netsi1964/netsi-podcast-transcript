@@ -27,7 +27,7 @@ struct RootView: View {
                 Button {
                     showingArchiveChat = true
                 } label: {
-                    Label("Chat med arkivet", systemImage: "bubble.left.and.bubble.right")
+                    Label(L("Chat med arkivet"), systemImage: "bubble.left.and.bubble.right")
                 }
             }
         }
@@ -41,11 +41,11 @@ struct RootView: View {
             ChatView(scope: .archive, episode: nil)
                 .frame(minWidth: 640, minHeight: 520)
         }
-        .alert("Der opstod en fejl", isPresented: .init(
+        .alert(L("Der opstod en fejl"), isPresented: .init(
             get: { model.lastError != nil },
             set: { if !$0 { model.lastError = nil } }
         )) {
-            Button("OK", role: .cancel) { model.lastError = nil }
+            Button(L("OK"), role: .cancel) { model.lastError = nil }
         } message: {
             Text(model.lastError ?? "")
         }
@@ -62,14 +62,14 @@ struct WelcomeView: View {
                 .foregroundStyle(.secondary)
             Text("Podcast Transcript Studio")
                 .font(.title.bold())
-            Text("Indsæt et Apple Podcasts episode-link for at hente og arbejde med transcriptet.")
+            Text(L("Indsæt et Apple Podcasts episode-link for at hente og arbejde med transcriptet."))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
             Button {
                 showingImport = true
             } label: {
-                Label("Importér episode", systemImage: "plus")
+                Label(L("Importér episode"), systemImage: "plus")
             }
             .controlSize(.large)
             .buttonStyle(.borderedProminent)

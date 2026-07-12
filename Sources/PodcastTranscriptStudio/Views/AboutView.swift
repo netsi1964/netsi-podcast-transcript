@@ -24,19 +24,17 @@ struct AboutView: View {
 
             VStack(spacing: 4) {
                 Text("Podcast Transcript Studio").font(.title2.bold())
-                Text("Version \(appVersion) · lokal-first macOS-app").font(.caption).foregroundStyle(.secondary)
+                Text(L("Version %@ · lokal-first macOS-app", appVersion)).font(.caption).foregroundStyle(.secondary)
             }
 
-            Text("Lavet med **Claude Code** af **Sten Hougaard** (netsi1964).")
+            Text(L("Lavet med **Claude Code** af **Sten Hougaard** (netsi1964)."))
                 .multilineTextAlignment(.center)
 
             Divider()
 
             VStack(spacing: 6) {
-                Text("Om Sten").font(.headline)
-                Text("Softwareudvikler og AI-specialist med 20+ års erfaring, baseret i Aarhus. "
-                     + "Arbejder med LLM-baserede assistenter, prompt engineering, MCP-servere og "
-                     + "AI-integrerede løsninger — med fokus på bæredygtig, etisk og menneske-centreret AI.")
+                Text(L("Om Sten")).font(.headline)
+                Text(L("Softwareudvikler og AI-specialist med 20+ års erfaring, baseret i Aarhus. Arbejder med LLM-baserede assistenter, prompt engineering, MCP-servere og AI-integrerede løsninger — med fokus på bæredygtig, etisk og menneske-centreret AI."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -47,17 +45,17 @@ struct AboutView: View {
             Link(destination: coffeeURL) {
                 HStack(spacing: 8) {
                     Text("☕️").font(.title3)
-                    Text("Buy me a coffee").fontWeight(.semibold)
+                    Text(L("Buy me a coffee")).fontWeight(.semibold)
                 }
                 .padding(.horizontal, 18).padding(.vertical, 10)
                 .foregroundStyle(.black)
                 .background(Color(red: 1.0, green: 0.86, blue: 0.13), in: Capsule())
             }
             .buttonStyle(.plain)
-            .help("Støt udvikleren på Buy Me a Coffee")
+            .help(L("Støt udvikleren på Buy Me a Coffee"))
 
             HStack(spacing: 18) {
-                Link("GitHub-repo", destination: repoURL)
+                Link(L("GitHub-repo"), destination: repoURL)
                 Link("netsi.dk", destination: websiteURL)
                 Link("LinkedIn", destination: linkedInURL)
                 Link("X", destination: xURL)
