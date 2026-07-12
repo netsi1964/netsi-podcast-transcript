@@ -120,6 +120,7 @@ struct StatusBadge: View {
         case .notFound: return .orange
         case .refreshing: return .blue
         case .notLoaded: return .secondary
+        case .availableNotDownloaded: return .blue
         }
     }
 }

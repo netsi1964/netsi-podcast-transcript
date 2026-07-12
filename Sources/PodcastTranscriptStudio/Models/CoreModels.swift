@@ -9,6 +9,8 @@ enum TranscriptStatus: String, Codable, CaseIterable, Sendable {
     case failed
     case notFound = "not_found"
     case refreshing
+    /// Apple has a transcript for this episode, but it hasn't been downloaded to this Mac yet.
+    case availableNotDownloaded = "available_not_downloaded"
 
     /// Human-facing Danish label. Status is always textual, never colour-only (PRD-SEC-006).
     var label: String {
@@ -18,6 +20,7 @@ enum TranscriptStatus: String, Codable, CaseIterable, Sendable {
         case .failed: return "Fejlet"
         case .notFound: return "Ikke fundet"
         case .refreshing: return "Henter…"
+        case .availableNotDownloaded: return "Findes hos Apple"
         }
     }
 }

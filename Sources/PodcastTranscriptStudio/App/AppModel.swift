@@ -159,6 +159,9 @@ final class AppModel: ObservableObject {
                 working.transcriptStatus = .loaded
                 working.transcriptLastLoadedAt = .now
                 working.transcriptError = nil
+            } else if case TranscriptFetchError.notDownloaded = error {
+                working.transcriptStatus = .availableNotDownloaded
+                working.transcriptError = error.localizedDescription
             } else if case TranscriptFetchError.notFound = error {
                 working.transcriptStatus = .notFound
                 working.transcriptError = error.localizedDescription

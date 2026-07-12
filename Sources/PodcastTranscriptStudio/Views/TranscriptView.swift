@@ -116,11 +116,23 @@ struct TranscriptView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "text.alignleft").font(.largeTitle).foregroundStyle(.secondary)
-            Text(episode.transcriptStatus == .refreshing ? "Henter transcript…" : "Intet transcript endnu.")
-                .foregroundStyle(.secondary)
-            if episode.transcriptStatus != .refreshing {
-                Button("Hent transcript") { Task { await model.fetchTranscript(for: episode) } }
-                    .buttonStyle(.borderedProminent)
+            if episode.transcriptStatus == .availableNotDownloaded {
+                Text("Findes hos Apple – ikke hentet lokalt endnu")
+                    .font(.headline)
+                Text("Åbn episoden i Apple Podcasts og vis transskriptionen, så cachelagrer Apple den. Tryk derefter \"Indlæs igen\".")
+                    .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
+                HStack {
+                    Button("Åbn i Podcasts") { ExternalActions.openInPodcasts(episode: episode) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Indlæs igen") { Task { await model.fetchTranscript(for: episode) } }
+                }
+            } else {
+                Text(episode.transcriptStatus == .refreshing ? "Henter transcript…" : "Intet transcript endnu.")
+                    .foregroundStyle(.secondary)
+                if episode.transcriptStatus != .refreshing {
+                    Button("Hent transcript") { Task { await model.fetchTranscript(for: episode) } }
+                        .buttonStyle(.borderedProminent)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

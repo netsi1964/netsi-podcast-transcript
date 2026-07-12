@@ -17,12 +17,16 @@ struct FetchedSegment {
 
 enum TranscriptFetchError: LocalizedError {
     case notFound
+    case notDownloaded
     case unsupported
     case parsing(String)
 
     var errorDescription: String? {
         switch self {
         case .notFound: return "Der blev ikke fundet et transcript for episoden."
+        case .notDownloaded:
+            return "Apple har et transcript til episoden, men det er ikke hentet ned på din Mac endnu. "
+                + "Åbn episoden i Apple Podcasts, vis transskriptionen, og tryk så \"Indlæs igen\"."
         case .unsupported: return "Denne transcript-kilde understøttes ikke endnu."
         case .parsing(let m): return "Kunne ikke læse transcriptet: \(m)"
         }

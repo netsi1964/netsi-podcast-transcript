@@ -71,7 +71,8 @@ struct EpisodeDetailView: View {
                          label: "Kopiér metadata")
             }
 
-            if episode.transcriptStatus == .failed || episode.transcriptStatus == .notFound {
+            if episode.transcriptStatus == .failed || episode.transcriptStatus == .notFound
+                || episode.transcriptStatus == .availableNotDownloaded {
                 retryBar
             }
 
