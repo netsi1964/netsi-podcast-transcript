@@ -1,0 +1,42 @@
+name: Build macOS app
+
+# Builds the double-clickable .app and attaches it to the GitHub Release.
+# Triggers automatically when you publish a Release; can also be run manually.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build .app bundle
+        run: ./scripts/build-app.sh
+
+      - name: Zip .app
+        run: |
+          cd dist
+          ditto -c -k --keepParent "Podcast Transcript Studio.app" "PodcastTranscriptStudio-macos-arm64.zip"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PodcastTranscriptStudio-macos-arm64
+          path: dist/PodcastTranscriptStudio-macos-arm64.zip
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "dist/PodcastTranscriptStudio-macos-arm64.zip" --clobber
