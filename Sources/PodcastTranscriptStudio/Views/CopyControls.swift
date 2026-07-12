@@ -8,10 +8,10 @@ struct CopyMenu: View {
 
     var body: some View {
         Menu {
-            Button("Kopiér som tekst") { Clipboard.copyFormatted(markdown()) }
-            Button("Kopiér som Markdown") { Clipboard.copyMarkdown(markdown()) }
+            Button(L("Kopiér som tekst")) { Clipboard.copyFormatted(markdown()) }
+            Button(L("Kopiér som Markdown")) { Clipboard.copyMarkdown(markdown()) }
         } label: {
-            Label(label, systemImage: "doc.on.doc")
+            Label(L(label), systemImage: "doc.on.doc")
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -38,7 +38,7 @@ struct SelectableError: View {
                 Image(systemName: "doc.on.doc")
             }
             .buttonStyle(.borderless)
-            .help("Kopiér fejlbesked")
+            .help(L("Kopiér fejlbesked"))
         }
         .padding(10)
         .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
@@ -51,11 +51,11 @@ struct CopyIconMenu: View {
 
     var body: some View {
         Menu {
-            Button("Kopiér som tekst") { Clipboard.copyFormatted(markdown()) }
-            Button("Kopiér som Markdown") { Clipboard.copyMarkdown(markdown()) }
+            Button(L("Kopiér som tekst")) { Clipboard.copyFormatted(markdown()) }
+            Button(L("Kopiér som Markdown")) { Clipboard.copyMarkdown(markdown()) }
         } label: {
             Image(systemName: "doc.on.doc")
         }
-        .help("Kopiér")
+        .help(L("Kopiér"))
     }
 }

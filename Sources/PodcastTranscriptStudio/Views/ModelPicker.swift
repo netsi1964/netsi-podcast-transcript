@@ -20,22 +20,22 @@ struct ModelPicker: View {
     var body: some View {
         HStack(spacing: 6) {
             if custom || (opts.isEmpty && !isLoading) {
-                TextField("model-id", text: $model).textFieldStyle(.roundedBorder)
+                TextField(L("model-id"), text: $model).textFieldStyle(.roundedBorder)
                 if !opts.isEmpty {
-                    Button("Vælg fra liste") { custom = false }.buttonStyle(.link).font(.caption)
+                    Button(L("Vælg fra liste")) { custom = false }.buttonStyle(.link).font(.caption)
                 }
             } else {
                 Picker("", selection: $model) {
                     ForEach(opts, id: \.self) { Text($0).tag($0) }
                 }
                 .labelsHidden()
-                Button("Egen…") { custom = true }.buttonStyle(.link).font(.caption)
+                Button(L("Egen…")) { custom = true }.buttonStyle(.link).font(.caption)
             }
             if isLoading {
                 ProgressView().controlSize(.small)
             } else {
                 Button { reload() } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless).help("Hent modeller fra provideren")
+                    .buttonStyle(.borderless).help(L("Hent modeller fra provideren"))
             }
         }
     }
