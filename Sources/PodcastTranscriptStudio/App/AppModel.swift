@@ -142,8 +142,12 @@ final class AppModel: ObservableObject {
                 title: result.podcastTitle,
                 appleURL: result.applePodcastID.map { "https://podcasts.apple.com/podcast/id\($0)" }
             ))
-            // For a show result with no specific episode, we can only add the podcast shell.
-            guard result.kind == .episode else { refreshEpisodes(); return nil }
+            // A show result carries no episode of its own, so its episodes are looked up and
+            // imported — otherwise the import would silently produce a podcast shell that the
+            // episode-only library never shows.
+            guard result.kind == .episode else {
+                return try await importEpisodes(ofShow: result, into: podcast)
+            }
 
             var episode = Episode(
                 podcastID: podcast.id,
@@ -166,6 +170,44 @@ final class AppModel: ObservableObject {
             lastError = error.localizedDescription
             return nil
         }
+    }
+
+    /// Imports a show's newest episodes as shells and returns the newest one's id, so the caller
+    /// can select it.
+    ///
+    /// Transcripts are deliberately *not* fetched here: one show is dozens of episodes, and
+    /// firing a transcript job per episode would hammer the fragile Apple integration. The
+    /// episodes land as `not_loaded` and the user fetches the ones they want.
+    private func importEpisodes(ofShow result: PodcastSearchResult, into podcast: Podcast) async throws -> String? {
+        guard let applePodcastID = result.applePodcastID else {
+            lastError = "Podcasten mangler et Apple-id, så dens episoder kan ikke hentes."
+            return nil
+        }
+        let found = try await PodcastSearchService.episodes(forPodcastID: applePodcastID)
+        guard !found.isEmpty else {
+            lastError = "Der blev ikke fundet nogen episoder for “\(result.podcastTitle)”."
+            return nil
+        }
+
+        // Inserted oldest-first so the newest episode gets the latest `updated_at` and sorts to
+        // the top of the library's "senest opdateret" order.
+        let ordered = found.sorted { ($0.releaseDate ?? .distantPast) < ($1.releaseDate ?? .distantPast) }
+        var newestID: String?
+        for item in ordered {
+            let episode = try store.upsertEpisode(Episode(
+                podcastID: podcast.id,
+                appleEpisodeID: item.appleEpisodeID,
+                title: item.episodeTitle ?? "Episode",
+                descriptionMarkdown: item.descriptionText,
+                publishedAt: item.releaseDate,
+                durationSeconds: item.durationSeconds,
+                appleURL: item.appleURL ?? "",
+                artworkURL: item.artworkURL
+            ))
+            newestID = episode.id
+        }
+        refreshEpisodes()
+        return newestID
     }
 
     // MARK: - Transcript (PRD-FEAT-003)

@@ -168,10 +168,11 @@ struct SearchSheet: View {
                 model.refreshEpisodes()
                 selectedEpisodeID = id
                 importedIDs.insert(result.id)
-            } else if result.kind == .podcast {
-                importedIDs.insert(result.id)
             } else {
-                errorText = model.lastError ?? "Kunne ikke importere episoden."
+                // Shows now import their episodes too, so a nil result is a genuine failure for
+                // both kinds — never mark it as imported.
+                errorText = model.lastError
+                    ?? (result.kind == .podcast ? "Kunne ikke importere podcasten." : "Kunne ikke importere episoden.")
                 model.lastError = nil
             }
         }

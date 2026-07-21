@@ -22,6 +22,7 @@ struct PodcastSearchResult: Identifiable, Hashable {
 /// podcasts and episodes instead of pasting links (PRD-SEC-010 future expansion: katalog-søgning).
 enum PodcastSearchService {
     private static let base = "https://itunes.apple.com/search"
+    private static let lookupBase = "https://itunes.apple.com/lookup"
 
     static func search(term: String, kind: PodcastSearchResult.Kind, limit: Int = 25) async throws -> [PodcastSearchResult] {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -43,6 +44,37 @@ enum PodcastSearchService {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let results = json["results"] as? [[String: Any]] else { return [] }
         return results.compactMap { parse($0, kind: kind) }
+    }
+
+    /// Looks up a show's newest episodes, so importing a podcast yields real episodes instead of
+    /// an empty shell (PRD-FEAT-002).
+    ///
+    /// Apple's lookup endpoint returns the *show itself* as the first result — a `track` row whose
+    /// `trackId` equals the `collectionId` and whose `trackTimeMillis` is meaningless. Rows are
+    /// therefore filtered on `wrapperType`, or the show would be imported as a bogus episode.
+    static func episodes(forPodcastID podcastID: String, limit: Int = 50) async throws -> [PodcastSearchResult] {
+        var components = URLComponents(string: lookupBase)!
+        components.queryItems = [
+            .init(name: "id", value: podcastID),
+            .init(name: "entity", value: "podcastEpisode"),
+            .init(name: "limit", value: String(limit))
+        ]
+        guard let url = components.url else { return [] }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw LLMError.http(http.statusCode, "iTunes Lookup")
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = json["results"] as? [[String: Any]] else { return [] }
+        return parseEpisodeLookup(results)
+    }
+
+    /// Split out from `episodes(forPodcastID:)` so the show-row filtering is testable offline.
+    static func parseEpisodeLookup(_ results: [[String: Any]]) -> [PodcastSearchResult] {
+        results
+            .filter { $0["wrapperType"] as? String == "podcastEpisode" }
+            .compactMap { parse($0, kind: .episode) }
     }
 
     private static func parse(_ item: [String: Any], kind: PodcastSearchResult.Kind) -> PodcastSearchResult? {
