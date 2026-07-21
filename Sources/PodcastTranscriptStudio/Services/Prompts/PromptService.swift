@@ -47,7 +47,7 @@ final class PromptService: ObservableObject {
         // copied in — on first run this seeds everything (PRD-FEAT-006 acceptance), and on later
         // launches it delivers newly bundled defaults without touching the user's existing or
         // edited prompts. A default the user has deliberately deleted will reappear next launch.
-        guard let seedDir = Bundle.module.url(forResource: "DefaultPrompts", withExtension: nil),
+        guard let seedDir = Self.defaultPromptsURL,
               let seeds = try? fm.contentsOfDirectory(at: seedDir, includingPropertiesForKeys: nil)
         else { return }
         for seed in seeds where seed.pathExtension == "md" {
@@ -56,6 +56,31 @@ final class PromptService: ObservableObject {
                 try? fm.copyItem(at: seed, to: dest)
             }
         }
+    }
+
+    /// Locates the seeded `DefaultPrompts` folder.
+    ///
+    /// SwiftPM's generated `Bundle.module` for an *executable* target only looks next to
+    /// `Bundle.main.bundleURL` and at the absolute build-time path — neither of which exists
+    /// inside a shipped `.app`, and merely touching `Bundle.module` there is a `fatalError`.
+    /// So the app-bundle layouts (`Contents/Resources/…`, where `build-app.sh` puts the resource
+    /// bundle) are probed first, and `Bundle.module` is only reached when running from the
+    /// SwiftPM build directory, i.e. `swift run` and tests.
+    private static var defaultPromptsURL: URL? {
+        let fm = FileManager.default
+        if let resources = Bundle.main.resourceURL {
+            let candidates = [
+                resources.appendingPathComponent(
+                    "PodcastTranscriptStudio_PodcastTranscriptStudio.bundle/DefaultPrompts",
+                    isDirectory: true
+                ),
+                resources.appendingPathComponent("DefaultPrompts", isDirectory: true),
+            ]
+            if let found = candidates.first(where: { fm.fileExists(atPath: $0.path) }) {
+                return found
+            }
+        }
+        return Bundle.module.url(forResource: "DefaultPrompts", withExtension: nil)
     }
 
     /// Debounces bursts of filesystem events into a single reload.
